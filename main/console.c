@@ -11,7 +11,7 @@
 #include "driver/uart.h"
 #include "console.h"
 
-#define LINE_MAX 96
+#define CONSOLE_LINE_MAX 96
 #define ARGV_MAX 6
 
 // ---- Hook for Member 5: returns true if the command was an admin command ----
@@ -101,7 +101,7 @@ static void handle_line(char *line)
 
 static void console_task(void *arg)
 {
-    char buf[LINE_MAX];
+    char buf[CONSOLE_LINE_MAX];
     int len = 0;
     uint8_t c;
 
@@ -118,7 +118,7 @@ static void console_task(void *arg)
             } else if ((c == 8 || c == 127) && len > 0) {      // backspace
                 len--;
                 printf("\b \b");
-            } else if (len < LINE_MAX - 1 && c >= 32) {
+            } else if (len < CONSOLE_LINE_MAX - 1 && c >= 32) {
                 buf[len++] = (char)c;
                 printf("%c", c);                                // echo
             }

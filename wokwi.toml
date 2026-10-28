@@ -1,0 +1,4 @@
+[wokwi]
+version = 1
+firmware = 'build/cocis_smart_control.bin'
+elf = 'build/cocis_smart_control.elf'

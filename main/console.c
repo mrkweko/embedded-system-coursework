@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "driver/uart.h"
 #include "console.h"
+#include "admin.h"
 
 #define CONSOLE_LINE_MAX 96
 #define ARGV_MAX 6
@@ -84,7 +85,7 @@ static void handle_line(char *line)
 
     for (char *c = argv[0]; *c; c++) *c = (char)tolower((unsigned char)*c);
 
-    // if (admin_handle_command(argc, argv)) return;   // Member 5's commands first
+    if (admin_handle_command(argc, argv)) return;
 
     if      (!strcmp(argv[0], "help"))   print_help();
     else if (!strcmp(argv[0], "status")) cmd_status();

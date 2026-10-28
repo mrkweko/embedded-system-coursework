@@ -1,2 +1,9 @@
-idf_component_register(SRCS "main.c" "console.c"
-                       INCLUDE_DIRS ".")
+
+idf_component_register(
+    SRCS
+        "main.c"
+        "console.c"
+        "admin.c"
+    INCLUDE_DIRS "."
+)
+

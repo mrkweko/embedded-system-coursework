@@ -1,2 +1,9 @@
-idf_component_register(SRCS "access.c" "rfid.c" "main.c" "console.c"
-                       INCLUDE_DIRS ".")
+idf_component_register(
+    SRCS
+        "main.c"
+        "console.c"
+        "admin.c"
+        "access.c"
+        "rfid.c"
+    INCLUDE_DIRS "."
+)

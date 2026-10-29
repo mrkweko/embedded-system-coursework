@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "driver/uart.h"
 #include "console.h"
+#include "admin.h"
 
 #define CONSOLE_LINE_MAX 96
 #define ARGV_MAX 6
@@ -25,7 +26,7 @@ static void print_help(void)
     printf(" who                  people currently inside\n");
     printf(" rooms                room occupancy and light status\n");
     printf(" log [n]              last n access events (default 10)\n");
-    printf(" users                registered RFID users\n");
+    printf(" users                registered RFID users (admin)\n");
     printf(" scan <uid> <in|out>  simulate an RFID scan\n");
     printf(" -- admin (login required) --\n");
     printf(" login <pin> | logout | schedule set <HH:MM> <HH:MM>\n");
@@ -41,14 +42,48 @@ static void cmd_status(void)
 }
 
 static void cmd_who(void)   { /* TODO: copy inside-list under mutex, then print */ printf("TODO\n"); }
-static void cmd_rooms(void) { /* TODO: Member 1's room data */                    printf("TODO\n"); }
-static void cmd_users(void) { /* TODO: user table */                              printf("TODO\n"); }
+typedef struct {
+    bool occupied;
+    bool light_on;
+} room_status_t;   // delete this when Member 1's rooms.h defines it, and #include "rooms.h" instead
+
+bool rooms_get_status(int room, room_status_t *out);   // real version: Member 1
+
+__attribute__((weak)) bool rooms_get_status(int room, room_status_t *out)
+{
+    (void)room; (void)out;
+    return false;   // fallback until rooms.c exists
+}
+
+static void cmd_rooms(void)
+{
+    printf("---- ROOMS ----\n");
+    for (int r = 1; r <= 2; r++) {
+        room_status_t s;
+        if (!rooms_get_status(r, &s)) {
+            printf("  Room %d: not available yet\n", r);
+            continue;
+        }
+        printf("  Room %d: %-8s light %s\n", r,
+               s.occupied ? "OCCUPIED" : "empty",
+               s.light_on ? "ON" : "OFF");
+    }
+}
+
+void logger_print_recent(int n);   // real version: Member 3 (storage.c)
+
+__attribute__((weak)) void logger_print_recent(int n)
+{
+    (void)n;
+    printf("(log not available yet: storage module not integrated)\n");
+}
 
 static void cmd_log(int n)
 {
-    if (n < 1) n = 10;
-    // TODO: read last n entries via Member 3's log API
-    printf("Last %d events: TODO\n", n);
+    if (n < 1)  n = 10;
+    if (n > 50) n = 50;
+    printf("---- LAST %d EVENTS ----\n", n);
+    logger_print_recent(n);
 }
 
 static void cmd_scan(const char *uid, const char *dir)
@@ -84,13 +119,12 @@ static void handle_line(char *line)
 
     for (char *c = argv[0]; *c; c++) *c = (char)tolower((unsigned char)*c);
 
-    // if (admin_handle_command(argc, argv)) return;   // Member 5's commands first
+    if (admin_handle_command(argc, argv)) return;
 
     if      (!strcmp(argv[0], "help"))   print_help();
     else if (!strcmp(argv[0], "status")) cmd_status();
     else if (!strcmp(argv[0], "who"))    cmd_who();
     else if (!strcmp(argv[0], "rooms"))  cmd_rooms();
-    else if (!strcmp(argv[0], "users"))  cmd_users();
     else if (!strcmp(argv[0], "log"))    cmd_log(argc > 1 ? atoi(argv[1]) : 10);
     else if (!strcmp(argv[0], "scan")) {
         if (argc < 3) printf("Usage: scan <uid> <in|out>\n");

@@ -11,6 +11,7 @@
 #include "driver/uart.h"
 #include "console.h"
 #include "admin.h"
+#include "shared.h"   // for scan_queue
 
 #define CONSOLE_LINE_MAX 96
 #define ARGV_MAX 6
@@ -41,7 +42,32 @@ static void cmd_status(void)
     printf("---- SYSTEM STATUS ----\nTODO\n");
 }
 
-static void cmd_who(void)   { /* TODO: copy inside-list under mutex, then print */ printf("TODO\n"); }
+static void cmd_who(void)
+{
+    char names[MAX_USERS][sizeof(g_users[0].name)];
+    char uids[MAX_USERS][sizeof(g_users[0].uid)];
+    int n = 0;
+
+    // Copy under the lock (short, no printing)
+    xSemaphoreTake(g_users_mutex, portMAX_DELAY);
+    for (int i = 0; i < g_n_users; i++) {
+        if (g_users[i].inside) {
+            strncpy(names[n], g_users[i].name, sizeof(names[n]) - 1);
+            names[n][sizeof(names[n]) - 1] = '\0';
+            strncpy(uids[n], g_users[i].uid, sizeof(uids[n]) - 1);
+            uids[n][sizeof(uids[n]) - 1] = '\0';
+            n++;
+        }
+    }
+    xSemaphoreGive(g_users_mutex);
+
+    // Print after releasing
+    printf("---- PEOPLE INSIDE ----\n");
+    for (int i = 0; i < n; i++)
+        printf("  %-12s (%s)\n", names[i], uids[i]);
+    printf("%d person(s) inside\n", n);
+}
+
 typedef struct {
     bool occupied;
     bool light_on;

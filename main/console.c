@@ -35,13 +35,6 @@ static void print_help(void)
     printf("=========================================\n");
 }
 
-static void cmd_status(void)
-{
-    // TODO: take mutex, copy: time, schedule open/closed, people inside,
-    //       room1/room2 occupied + light, SD ok?, dropped log events. Release, print.
-    printf("---- SYSTEM STATUS ----\nTODO\n");
-}
-
 static void cmd_who(void)
 {
     char names[MAX_USERS][sizeof(g_users[0].name)];
@@ -110,6 +103,48 @@ static void cmd_log(int n)
     if (n > 50) n = 50;
     printf("---- LAST %d EVENTS ----\n", n);
     logger_print_recent(n);
+}
+
+// ---- Hooks provided by teammates (fallbacks used until they exist) ----
+int access_schedule_state(void);   // Member 2: 1 = access open, 0 = closed
+__attribute__((weak)) int access_schedule_state(void) { return -1; }
+
+int logger_dropped_count(void);    // Member 3: log events lost
+__attribute__((weak)) int logger_dropped_count(void) { return -1; }
+
+static void cmd_status(void)
+{
+    int registered, inside = 0;
+
+    // Copy under the lock, print after releasing it
+    xSemaphoreTake(g_users_mutex, portMAX_DELAY);
+    registered = g_n_users;
+    for (int i = 0; i < g_n_users; i++)
+        if (g_users[i].inside) inside++;
+    xSemaphoreGive(g_users_mutex);
+
+    unsigned long up = (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
+    int sched   = access_schedule_state();
+    int dropped = logger_dropped_count();
+
+    printf("---- SYSTEM STATUS ----\n");
+    printf("  Uptime            : %lu s\n", up);
+    printf("  Building access   : %s\n",
+           sched == 1 ? "OPEN" : sched == 0 ? "CLOSED" : "unknown (not integrated)");
+    printf("  Registered users  : %d\n", registered);
+    printf("  People inside     : %d\n", inside);
+
+    for (int r = 1; r <= 2; r++) {
+        room_status_t s;
+        if (rooms_get_status(r, &s))
+            printf("  Room %d            : %s, light %s\n", r,
+                   s.occupied ? "occupied" : "empty", s.light_on ? "ON" : "OFF");
+        else
+            printf("  Room %d            : not available yet\n", r);
+    }
+
+    if (dropped >= 0) printf("  Log events dropped: %d\n", dropped);
+    else              printf("  Log events dropped: not available yet\n");
 }
 
 static void cmd_scan(const char *uid, const char *dir)

@@ -10,6 +10,7 @@
 #include "console.h"
 #include "admin.h"
 
+#include "shared.h"
 // Queue for simulated RFID scans
 QueueHandle_t scan_queue;
 
@@ -27,9 +28,14 @@ static void stub_access_task(void *arg)
     }
 }
 
+user_t g_users[MAX_USERS];
+int g_n_users = 0;
+SemaphoreHandle_t g_users_mutex;
+
 // Main ESP32 application
 void app_main(void)
 {
+    g_users_mutex = xSemaphoreCreateMutex();
     // Create queue for RFID events
     scan_queue = xQueueCreate(8, sizeof(scan_event_t));
 

@@ -89,8 +89,21 @@ static bool transceive(reader_t *r, const uint8_t *send, int len, uint8_t *back,
     if (n > *back_len) {
         n = *back_len;
     }
-    for (int i = 0; i < n; i++) {
-        back[i] = reg_read(r, FIFODataReg);
+    if (n > 16) {
+        n = 16;
+    }
+    if (n > 0) {
+        // Burst read: send the FIFO address n times, then 0. Data arrives in rx[1..n].
+        uint8_t tx[17], rx[17] = { 0 };
+        for (int i = 0; i < n; i++) {
+            tx[i] = (uint8_t)(0x80 | (FIFODataReg << 1));
+        }
+        tx[n] = 0;
+        spi_transaction_t t = { .length = (n + 1) * 8, .tx_buffer = tx, .rx_buffer = rx };
+        spi_device_polling_transmit(r->dev, &t);
+        for (int i = 0; i < n; i++) {
+            back[i] = rx[i + 1];
+        }
     }
     *back_len = n;
     return true;
@@ -163,7 +176,7 @@ static void rfid_task(void *arg)
             printf("\n[RFID] %s reader: card %s\n", r->entry ? "ENTRY" : "EXIT", ev.uid);
             xQueueSend(scan_queue, &ev, 0);
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(20));                  // poll often so a short TAP is not missed
     }
 }
 

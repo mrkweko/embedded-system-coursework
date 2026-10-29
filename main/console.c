@@ -42,7 +42,33 @@ static void cmd_status(void)
 }
 
 static void cmd_who(void)   { /* TODO: copy inside-list under mutex, then print */ printf("TODO\n"); }
-static void cmd_rooms(void) { /* TODO: Member 1's room data */                    printf("TODO\n"); }                           
+typedef struct {
+    bool occupied;
+    bool light_on;
+} room_status_t;   // delete this when Member 1's rooms.h defines it, and #include "rooms.h" instead
+
+bool rooms_get_status(int room, room_status_t *out);   // real version: Member 1
+
+__attribute__((weak)) bool rooms_get_status(int room, room_status_t *out)
+{
+    (void)room; (void)out;
+    return false;   // fallback until rooms.c exists
+}
+
+static void cmd_rooms(void)
+{
+    printf("---- ROOMS ----\n");
+    for (int r = 1; r <= 2; r++) {
+        room_status_t s;
+        if (!rooms_get_status(r, &s)) {
+            printf("  Room %d: not available yet\n", r);
+            continue;
+        }
+        printf("  Room %d: %-8s light %s\n", r,
+               s.occupied ? "OCCUPIED" : "empty",
+               s.light_on ? "ON" : "OFF");
+    }
+}
 
 void logger_print_recent(int n);   // real version: Member 3 (storage.c)
 

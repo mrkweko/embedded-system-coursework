@@ -8,6 +8,7 @@
 #include "freertos/queue.h"
 
 #include "console.h"
+#include "access.h"
 #include "admin.h"
 
 #include "shared.h"
@@ -53,8 +54,10 @@ void app_main(void)
     // Start serial interface
     console_start();
 
+    // Member 2
+    access_start();
+
     // Other group members' tasks
-    // access_start();   // Member 2
     // rooms_start();    // Member 1
     // storage_start();  // Member 3
 }

@@ -5,7 +5,9 @@
   "parts": [
     { "type": "board-esp32-devkit-c-v4", "id": "esp",   "top": 57.6, "left": 14.44, "attrs": {} },
     { "type": "board-mfrc522",           "id": "rfid1", "top": -100,  "left": -260,  "attrs": {} },
-    { "type": "board-mfrc522",           "id": "rfid2", "top": 80,    "left": -260,  "attrs": {} }
+    { "type": "board-mfrc522",           "id": "rfid2", "top": 80,    "left": -260,  "attrs": {} },
+    { "type": "wokwi-led", "id": "led_entry", "top": 0,  "left": 200, "attrs": { "color": "green" } },
+    { "type": "wokwi-led", "id": "led_exit",  "top": 60, "left": 200, "attrs": { "color": "yellow" } }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
@@ -24,7 +26,11 @@
     [ "rfid2:MOSI", "esp:23",     "blue",   [] ],
     [ "rfid2:MISO", "esp:19",     "gold",   [] ],
     [ "rfid2:3.3V", "esp:3V3",    "red",    [] ],
-    [ "rfid2:GND",  "esp:GND.1",  "black",  [] ]
+    [ "rfid2:GND",  "esp:GND.1",  "black",  [] ],
+    [ "esp:25", "led_entry:A", "green",  [] ],
+    [ "led_entry:C", "esp:GND.1", "black", [] ],
+    [ "esp:26", "led_exit:A", "yellow", [] ],
+    [ "led_exit:C", "esp:GND.1", "black", [] ]
   ],
   "dependencies": {}
 }

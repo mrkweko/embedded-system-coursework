@@ -26,7 +26,7 @@ static void print_help(void)
     printf(" who                  people currently inside\n");
     printf(" rooms                room occupancy and light status\n");
     printf(" log [n]              last n access events (default 10)\n");
-    printf(" users                registered RFID users\n");
+    printf(" users                registered RFID users (admin)\n");
     printf(" scan <uid> <in|out>  simulate an RFID scan\n");
     printf(" -- admin (login required) --\n");
     printf(" login <pin> | logout | schedule set <HH:MM> <HH:MM>\n");
@@ -42,8 +42,7 @@ static void cmd_status(void)
 }
 
 static void cmd_who(void)   { /* TODO: copy inside-list under mutex, then print */ printf("TODO\n"); }
-static void cmd_rooms(void) { /* TODO: Member 1's room data */                    printf("TODO\n"); }
-static void cmd_users(void) { /* TODO: user table */                              printf("TODO\n"); }
+static void cmd_rooms(void) { /* TODO: Member 1's room data */                    printf("TODO\n"); }                           
 
 static void cmd_log(int n)
 {
@@ -91,7 +90,6 @@ static void handle_line(char *line)
     else if (!strcmp(argv[0], "status")) cmd_status();
     else if (!strcmp(argv[0], "who"))    cmd_who();
     else if (!strcmp(argv[0], "rooms"))  cmd_rooms();
-    else if (!strcmp(argv[0], "users"))  cmd_users();
     else if (!strcmp(argv[0], "log"))    cmd_log(argc > 1 ? atoi(argv[1]) : 10);
     else if (!strcmp(argv[0], "scan")) {
         if (argc < 3) printf("Usage: scan <uid> <in|out>\n");

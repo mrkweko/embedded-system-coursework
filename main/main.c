@@ -4,6 +4,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "console.h"
+#include "access.h"
 
 QueueHandle_t scan_queue;
 
@@ -23,7 +24,7 @@ void app_main(void)
 
     xTaskCreate(stub_access_task, "stub_access", 3072, NULL, 4, NULL);
     console_start();
-    // access_start();   // Member 2
+    access_start();   // Member 2
     // rooms_start();    // Member 1
     // storage_start();  // Member 3
     // admin_start();    // Member 5

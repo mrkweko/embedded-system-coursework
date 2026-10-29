@@ -44,11 +44,20 @@ static void cmd_status(void)
 static void cmd_who(void)   { /* TODO: copy inside-list under mutex, then print */ printf("TODO\n"); }
 static void cmd_rooms(void) { /* TODO: Member 1's room data */                    printf("TODO\n"); }                           
 
+void logger_print_recent(int n);   // real version: Member 3 (storage.c)
+
+__attribute__((weak)) void logger_print_recent(int n)
+{
+    (void)n;
+    printf("(log not available yet: storage module not integrated)\n");
+}
+
 static void cmd_log(int n)
 {
-    if (n < 1) n = 10;
-    // TODO: read last n entries via Member 3's log API
-    printf("Last %d events: TODO\n", n);
+    if (n < 1)  n = 10;
+    if (n > 50) n = 50;
+    printf("---- LAST %d EVENTS ----\n", n);
+    logger_print_recent(n);
 }
 
 static void cmd_scan(const char *uid, const char *dir)

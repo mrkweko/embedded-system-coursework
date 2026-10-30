@@ -10,6 +10,7 @@
 #include "freertos/semphr.h"
 #include "driver/gpio.h"
 #include "console.h"                    // scan_event_t, scan_queue
+#include "shared.h"                     // user_t, g_users, g_n_users, g_users_mutex
 
 void rfid_start(void);                  // in rfid.c: starts the two RFID readers
 
@@ -43,6 +44,18 @@ bool access_is_open(void)
     return open;
 }
 
+int access_schedule_state(void)
+{
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    bool open = in_window();
+    bool emergency = s_emergency;
+    xSemaphoreGive(s_mutex);
+    if (open) {
+        return ACCESS_OPEN;
+    }
+    return emergency ? ACCESS_EMERGENCY : ACCESS_CLOSED;
+}
+
 void access_set_hours(int open_min, int close_min)
 {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
@@ -66,23 +79,29 @@ void access_set_emergency(bool on)
     xSemaphoreGive(s_mutex);
 }
 
-// ---------- PART 2: TEMPORARY. Delete when Member 3 pushes the shared user list, mutex and log ----------
-typedef struct {
-    char uid[16];
-    char name[16];
-    bool inside;
-} tmp_user_t;
-
-// IDs of Wokwi's built-in cards: Blue, Green, Yellow, Red, Key Fob
-static tmp_user_t s_users[] = {
-    { "01020304", "Alice",  false },
-    { "11223344", "Brian",  false },
-    { "55667788", "Cathy",  false },
-    { "AABBCCDD", "David",  false },
-    { "C0FFEE99", "Esther", false },
-};
-#define N_USERS ((int)(sizeof(s_users) / sizeof(s_users[0])))
-static SemaphoreHandle_t s_users_mutex;
+// ---------- PART 2: test users and clock ----------
+// Seeds the shared table with Wokwi's built-in cards, only if the table is empty
+// (so users loaded from flash by Member 3 are not duplicated).
+static void seed_test_users(void)
+{
+    static const struct { const char *uid, *name; } seed[] = {
+        { "01020304", "Alice"  },       // Blue card
+        { "11223344", "Brian"  },       // Green card
+        { "55667788", "Cathy"  },       // Yellow card
+        { "AABBCCDD", "David"  },       // Red card
+        { "C0FFEE99", "Esther" },       // Key fob
+    };
+    xSemaphoreTake(g_users_mutex, portMAX_DELAY);
+    if (g_n_users == 0) {
+        for (int i = 0; i < (int)(sizeof(seed) / sizeof(seed[0])) && g_n_users < MAX_USERS; i++) {
+            user_t *u = &g_users[g_n_users++];
+            strlcpy(u->uid, seed[i].uid, sizeof(u->uid));
+            strlcpy(u->name, seed[i].name, sizeof(u->name));
+            u->inside = false;
+        }
+    }
+    xSemaphoreGive(g_users_mutex);
+}
 
 // The simulation has no clock: start on 2 Nov 2026, 08:00 (Kampala) unless already set.
 static void tmp_clock_init(void)
@@ -111,11 +130,12 @@ static void handle_scan(const scan_event_t *ev)
     xSemaphoreGive(s_mutex);
 
     // 2. Decide, and update the user's 'inside' flag (another lock)
-    xSemaphoreTake(s_users_mutex, portMAX_DELAY);
-    tmp_user_t *u = NULL;
-    for (int i = 0; i < N_USERS; i++) {
-        if (strcmp(s_users[i].uid, ev->uid) == 0) {
-            u = &s_users[i];
+    xSemaphoreTake(g_users_mutex, portMAX_DELAY);
+    user_t *u = NULL;
+    for (int i = 0; i < g_n_users; i++) {
+        if (strcmp(g_users[i].uid, ev->uid) == 0) {
+            u = &g_users[i];
+            break;
         }
     }
     if (u == NULL) {
@@ -130,7 +150,7 @@ static void handle_scan(const scan_event_t *ev)
             u->inside = ev->entry;
         }
     }
-    xSemaphoreGive(s_users_mutex);
+    xSemaphoreGive(g_users_mutex);
 
     // 3. Slow things (printing, the door delay) happen after unlocking
     if (denied != NULL) {
@@ -158,8 +178,8 @@ static void access_task(void *arg)
 void access_start(void)
 {
     s_mutex = xSemaphoreCreateMutex();
-    s_users_mutex = xSemaphoreCreateMutex();
     tmp_clock_init();
+    seed_test_users();                  // needs g_users_mutex, created in app_main()
 
     gpio_config_t out = {
         .pin_bit_mask = (1ULL << PIN_ENTRY_DOOR) | (1ULL << PIN_EXIT_DOOR),

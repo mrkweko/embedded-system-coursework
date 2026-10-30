@@ -12,6 +12,7 @@
 #include "console.h"
 #include "admin.h"
 #include "shared.h"   // for scan_queue
+#include "access.h"   // for access_schedule_state()
 
 #define CONSOLE_LINE_MAX 96
 #define ARGV_MAX 6
@@ -106,9 +107,6 @@ static void cmd_log(int n)
 }
 
 // ---- Hooks provided by teammates (fallbacks used until they exist) ----
-int access_schedule_state(void);   // Member 2: 1 = access open, 0 = closed
-__attribute__((weak)) int access_schedule_state(void) { return -1; }
-
 int logger_dropped_count(void);    // Member 3: log events lost
 __attribute__((weak)) int logger_dropped_count(void) { return -1; }
 
@@ -124,13 +122,11 @@ static void cmd_status(void)
     xSemaphoreGive(g_users_mutex);
 
     unsigned long up = (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
-    int sched   = access_schedule_state();
     int dropped = logger_dropped_count();
 
     printf("---- SYSTEM STATUS ----\n");
     printf("  Uptime            : %lu s\n", up);
-    printf("  Building access   : %s\n",
-           sched == 1 ? "OPEN" : sched == 0 ? "CLOSED" : "unknown (not integrated)");
+    printf("  Building access   : %s\n", access_is_open() ? "OPEN" : "CLOSED");
     printf("  Registered users  : %d\n", registered);
     printf("  People inside     : %d\n", inside);
 

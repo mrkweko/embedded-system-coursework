@@ -49,7 +49,7 @@ void app_main(void)
 
     // Start administrator monitoring task
     xTaskCreate(admin_monitor_task, "admin_monitor",
-                2048, NULL, 2, NULL);
+                3072, NULL, 2, NULL);
 
     // Start serial interface
     console_start();

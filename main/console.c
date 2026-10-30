@@ -225,5 +225,5 @@ static void console_task(void *arg)
 void console_start(void)
 {
     uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
-    xTaskCreate(console_task, "console", 4096, NULL, 3, NULL);
+    xTaskCreate(console_task, "console", 6144, NULL, 3, NULL);
 }

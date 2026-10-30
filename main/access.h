@@ -9,3 +9,6 @@ bool access_is_open(void);                            // is the building open ri
 void access_set_hours(int open_min, int close_min);   // minutes after midnight, e.g. 7*60
 void access_get_hours(int *open_min, int *close_min);
 void access_set_emergency(bool on);                   // lets people EXIT outside hours
+
+   enum { ACCESS_CLOSED = 0, ACCESS_OPEN = 1, ACCESS_EMERGENCY = 2 };
+   int access_schedule_state(void);

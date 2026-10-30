@@ -15,20 +15,6 @@
 // Queue for simulated RFID scans
 QueueHandle_t scan_queue;
 
-// Temporary access task for Member 2
-static void stub_access_task(void *arg)
-{
-    scan_event_t ev;
-
-    for (;;) {
-        if (xQueueReceive(scan_queue, &ev, portMAX_DELAY) == pdTRUE) {
-            printf("\n[stub access] got scan %s (%s)\n",
-                   ev.uid,
-                   ev.entry ? "in" : "out");
-        }
-    }
-}
-
 user_t g_users[MAX_USERS];
 int g_n_users = 0;
 SemaphoreHandle_t g_users_mutex;
@@ -39,10 +25,6 @@ void app_main(void)
     g_users_mutex = xSemaphoreCreateMutex();
     // Create queue for RFID events
     scan_queue = xQueueCreate(8, sizeof(scan_event_t));
-
-    // Start temporary RFID access task
-    xTaskCreate(stub_access_task, "stub_access",
-                3072, NULL, 4, NULL);
 
     // Initialize administrator system
     admin_start();

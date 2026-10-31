@@ -12,6 +12,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "console.h"                // scan_event_t, scan_queue
+#include "storage.h"                // [kweko] enqueue RFID events without blocking
 
 // Pins (must match diagram.json). SCK, MISO and MOSI are shared; each reader has its own SDA and RST.
 #define PIN_SCK   18
@@ -174,6 +175,8 @@ static void rfid_task(void *arg)
                 continue;
             }
             printf("\n[RFID] %s reader: card %s\n", r->entry ? "ENTRY" : "EXIT", ev.uid);
+            log_event(LOG_EVENT_RFID_SCAN, "%s reader: card %s",
+                      r->entry ? "ENTRY" : "EXIT", ev.uid);
             xQueueSend(scan_queue, &ev, 0);
         }
         vTaskDelay(pdMS_TO_TICKS(20));                  // poll often so a short TAP is not missed

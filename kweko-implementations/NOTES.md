@@ -155,3 +155,67 @@ admin is in `admin.c`; RFID polling is in `rfid.c`.
 7. Update `main.c`, component registration, and `diagram.json`; build and test
    queue saturation, reboot restoration, log retrieval, SD failure, and
    concurrent scan/admin operations in Wokwi.
+
+## Session 2
+
+### Logging implementation
+
+- Added [`storage.h`](../main/storage.h) and [`storage.c`](../main/storage.c).
+  `storage_start(void)` creates the logging queue and logger task.
+- Event API: `bool log_event(log_event_type_t type, const char *fmt, ...)`.
+  It formats into the fixed `LOG_MESSAGE_SIZE` (80-byte) buffer and always
+  sends with zero timeout. `LOG_QUEUE_LENGTH` is 32: it absorbs short bursts
+  without making producers wait, while the bounded ring remains the user-facing
+  history. Failed sends increment `s_dropped_events` under
+  `s_status_lock`.
+- Event types are `LOG_EVENT_ACCESS_GRANTED`, `LOG_EVENT_ACCESS_DENIED`, and
+  `LOG_EVENT_RFID_SCAN`. `log_entry_t` contains `time_t timestamp`,
+  `TickType_t uptime_ticks`, the enum, and the fixed message buffer. The
+  current project has no hardware RTC; timestamps use the existing libc
+  `time(NULL)`/`localtime_r` path, which is initialized by the simulated clock
+  in `access.c`. Before that clock is valid, output uses uptime as a
+  `1970-01-01 HH:MM:SS` fallback. A real RTC integration must replace this
+  fallback before deployment.
+- `logger_task` is the only SD-touching task. It mounts `/sd`, appends
+  `events.csv`, flushes and closes every line, marks `sd_ok` false on errors,
+  unmounts failed media, and retries every `SD_RETRY_TICKS` (10 seconds).
+  Public APIs are `int log_get_recent(int n, log_entry_t *out)`,
+  `uint32_t log_dropped_count(void)`, and `bool log_sd_ok(void)`.
+  `log_get_recent` clamps to the available entries and 20-entry ring size and
+  copies oldest-first under the ring mutex. Console compatibility wrappers are
+  `void logger_print_recent(int n)` and `int logger_dropped_count(void)`.
+- SD uses CS GPIO 4. SPI is shared with both MFRC522 readers on SCK GPIO 18,
+  MOSI GPIO 23, and MISO GPIO 19; reader CS pins remain GPIO 5 and 17, and
+  reader reset pins remain GPIO 21 and 16. The SD module is wired to those
+  pins in [`diagram.json`](../diagram.json). GPIO 25/26 remain the door LEDs.
+- `s_ring_mutex` protects the 20-entry RAM ring. `s_status_lock` protects
+  `s_dropped_events` and `s_sd_ok`. `s_log_queue` is owned by the logger
+  implementation and FreeRTOS protects queue operations. No task holds one of
+  these locks while holding `g_users_mutex` or access `s_mutex`.
+- `logger_task(void *arg)` is private to `storage.c`; the component explicitly
+  requires `driver`, `fatfs`, and `sdmmc` for the SD/SPI APIs. Messages are
+  sanitized before writing so commas/newlines cannot break the one-event-per-
+  CSV-line format.
+
+### Integration hooks and other-member edits
+
+- [`main.c`](../main/main.c) includes `storage.h` and calls `storage_start()`
+  before `access_start()`, so logging infrastructure exists before RFID/access
+  tasks begin.
+- [`main/CMakeLists.txt`](../main/CMakeLists.txt) registers `storage.c`.
+- [`access.c`](../main/access.c) has the smallest `[kweko]` hooks after the
+  existing access `printf` calls to enqueue granted/denied events. These calls
+  are deliberately outside both `s_mutex` and `g_users_mutex`.
+- [`rfid.c`](../main/rfid.c) has one smallest `[kweko]` hook after its existing
+  RFID print to enqueue the scan event; it remains nonblocking.
+- The existing weak console hooks are intentionally left in
+  [`console.c`](../main/console.c); the strong implementations in `storage.c`
+  override them without refactoring Member 4's file.
+- `diagram.json` adds a `wokwi-microsd-card` on shared SPI and CS GPIO 4.
+  No existing reader or LED pin was changed.
+
+### Validation
+
+- `idf.py`/Arduino CLI/PlatformIO were not available in the environment, so
+  an ESP-IDF compile and Wokwi run are unverified. `git diff --check` should be
+  run before handoff; the ESP-IDF target must verify the SD/FATFS API versions.

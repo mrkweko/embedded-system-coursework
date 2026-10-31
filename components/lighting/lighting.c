@@ -9,7 +9,11 @@
 
 static const char *TAG = "LightingSystem";
 
+static portMUX_TYPE room_status_mux = portMUX_INITIALIZER_UNLOCKED;
+static room_status_t room_status[2];
+
 typedef struct {
+    int room_number;
     const char *room_name;
     gpio_num_t pir_pin;
     gpio_num_t light_pin;
@@ -51,11 +55,18 @@ static void room_control_task(void *pvParameters)
             ESP_LOGI(TAG, "[%s] Timeout, light OFF", config->room_name);
         }
 
+        portENTER_CRITICAL(&room_status_mux);
+        room_status[config->room_number - 1].occupied =
+            light_is_on && (now - last_motion_time) < config->off_delay_ticks;
+        room_status[config->room_number - 1].light_on = light_is_on;
+        portEXIT_CRITICAL(&room_status_mux);
+
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
 static const room_config_t room_1 = {
+    .room_number = 1,
     .room_name = "Lecture Room 1",
     .pir_pin = GPIO_NUM_13,
     .light_pin = GPIO_NUM_22,
@@ -63,6 +74,7 @@ static const room_config_t room_1 = {
 };
 
 static const room_config_t room_2 = {
+    .room_number = 2,
     .room_name = "Lecture Room 2",
     .pir_pin = GPIO_NUM_14,
     .light_pin = GPIO_NUM_27,
@@ -80,4 +92,16 @@ void lighting_init(void)
                     (void *)&room_2, 5, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create Lecture Room 2 task");
     }
+}
+
+bool rooms_get_status(int room, room_status_t *out)
+{
+    if (out == NULL || room < 1 || room > 2) {
+        return false;
+    }
+
+    portENTER_CRITICAL(&room_status_mux);
+    *out = room_status[room - 1];
+    portEXIT_CRITICAL(&room_status_mux);
+    return true;
 }

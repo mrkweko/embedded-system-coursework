@@ -52,7 +52,7 @@ Monitoring System. The repository is an ESP-IDF C application, not an Arduino
              |                  |
              |                  +--> s_ring_mutex --> RAM ring (20 entries)
              |
-             +--> SPI2 + SD CS GPIO 27 --> /sd/events.csv
+             +--> SPI2 + SD CS GPIO 32 --> /sd/events.csv
                          |
                          +-- shared SCK 18, MISO 19, MOSI 23
 

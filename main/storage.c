@@ -18,7 +18,7 @@
 #include "driver/sdspi_host.h"
 
 #define SD_MOUNT_POINT "/sd"
-#define SD_CS_PIN GPIO_NUM_4
+#define SD_CS_PIN GPIO_NUM_27 // [kweko] sd fix: dedicated SD CS; RFID uses GPIO 5 and 17
 #define SD_RETRY_TICKS pdMS_TO_TICKS(10000)
 #define LOG_FILE_NAME SD_MOUNT_POINT "/events.csv"
 #define VALID_TIME_THRESHOLD ((time_t)1700000000)
@@ -71,6 +71,8 @@ static bool mount_sd(sdmmc_card_t **card)
 
     slot.host_id = host.slot;
     slot.gpio_cs = SD_CS_PIN;
+    slot.gpio_cd = SDSPI_SLOT_NO_CD;
+    slot.gpio_wp = SDSPI_SLOT_NO_WP;
     esp_err_t err = esp_vfs_fat_sdspi_mount(
         SD_MOUNT_POINT, &host, &slot, &mount_config, card);
     if (err != ESP_OK) {
@@ -305,7 +307,7 @@ void storage_start(void)
         .quadhd_io_num = -1,
         .max_transfer_sz = 4000,
     };
-    esp_err_t spi_err = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
+    esp_err_t spi_err = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO); // [kweko] sd fix: initialize shared bus once before RFID or SD use
     if (spi_err != ESP_OK && spi_err != ESP_ERR_INVALID_STATE) {
         printf("[LOGGER] SPI bus initialization failed: %s\n",
                esp_err_to_name(spi_err));

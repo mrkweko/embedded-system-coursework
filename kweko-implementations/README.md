@@ -30,7 +30,8 @@ Monitoring System. The repository is an ESP-IDF C application, not an Arduino
 - No factory-reset CLI command was added.
 - No admin mutex was added; the existing admin task/console race remains an
   integration issue.
-- The duplicate SPI initialization in [`rfid.c`](../main/rfid.c) remains.
+- `storage_start()` initializes SPI2 once before the RFID devices and SD
+  logger use it; [`rfid.c`](../main/rfid.c) only adds its two devices.
 - No deferred persistence writer was added. NVS commit remains synchronous
   while the caller holds `g_users_mutex`.
 - No hardware RTC was added. The existing libc/simulated clock is used.
@@ -51,7 +52,7 @@ Monitoring System. The repository is an ESP-IDF C application, not an Arduino
              |                  |
              |                  +--> s_ring_mutex --> RAM ring (20 entries)
              |
-             +--> SPI2 + SD CS GPIO 4 --> /sd/events.csv
+             +--> SPI2 + SD CS GPIO 27 --> /sd/events.csv
                          |
                          +-- shared SCK 18, MISO 19, MOSI 23
 
@@ -77,7 +78,7 @@ flowchart LR
   P[RFID/access/CLI producers] -->|zero-timeout log_event| Q[s_log_queue 32]
   Q --> L[logger_task]
   L --> R[s_ring_mutex / RAM ring 20]
-  L -->|SPI2, CS 4| SD[/sd/events.csv]
+  L -->|SPI2, CS 27| SD[/sd/events.csv]
   C[console log] -->|log_get_recent| R
   S[console status] --> G[log_sd_ok / entries / dropped / last save]
   M[state mutations] --> N[state_save_locked/state_save]
@@ -599,8 +600,9 @@ If a previous run changed the PIN, use the persisted PIN rather than assuming
    The ESP-IDF SPI driver serializes transactions.
 
 9. **What is the remaining SPI integration risk?**  
-   `rfid.c` redundantly calls `spi_bus_initialize()` and should be coordinated
-   with `storage_start()`.
+   None in initialization order: `storage_start()` initializes SPI2 once before
+   `rfid_start()` adds the RFID devices, and the SD host uses that same SPI2
+   slot. The SD card has a dedicated CS on GPIO 27; RFID uses GPIO 5 and 17.
 
 10. **Which mutex protects the user table?**  
     `g_users_mutex` protects both `g_users` and `g_n_users`.

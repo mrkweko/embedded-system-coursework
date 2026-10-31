@@ -28,7 +28,7 @@
     [ "rfid2:MISO", "esp:19",     "gold",   [] ],
     [ "rfid2:3.3V", "esp:3V3",    "red",    [] ],
     [ "rfid2:GND",  "esp:GND.1",  "black",  [] ],
-    [ "sd:CS",   "esp:4",  "green",  [] ],
+    [ "sd:CS",   "esp:27", "green",  [] ],
     [ "sd:SCK",  "esp:18", "purple", [] ],
     [ "sd:MOSI", "esp:23", "blue",   [] ],
     [ "sd:MISO", "esp:19", "gold",   [] ],

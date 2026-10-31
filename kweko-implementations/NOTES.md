@@ -184,7 +184,7 @@ admin is in `admin.c`; RFID polling is in `rfid.c`.
   `log_get_recent` clamps to the available entries and 20-entry ring size and
   copies oldest-first under the ring mutex. Console compatibility wrappers are
   `void logger_print_recent(int n)` and `int logger_dropped_count(void)`.
-- SD uses CS GPIO 4. SPI is shared with both MFRC522 readers on SCK GPIO 18,
+- SD uses dedicated CS GPIO 27. SPI is shared with both MFRC522 readers on SCK GPIO 18,
   MOSI GPIO 23, and MISO GPIO 19; reader CS pins remain GPIO 5 and 17, and
   reader reset pins remain GPIO 21 and 16. The SD module is wired to those
   pins in [`diagram.json`](../diagram.json). GPIO 25/26 remain the door LEDs.
@@ -284,11 +284,9 @@ admin is in `admin.c`; RFID polling is in `rfid.c`.
 
 - Fixed explicit SPI startup ordering in [`storage.c`](../main/storage.c):
   `storage_start()` initializes SPI2 with SCK 18, MISO 19, and MOSI 23 before
-  the logger task attempts SD mounting. SD CS remains GPIO 4; RFID CS remains
-  GPIO 5/17. The ESP-IDF SPI driver serializes transactions for the shared
-  bus. `rfid.c` still redundantly calls `spi_bus_initialize()` and ignores its
-  return value at [`rfid.c`](../main/rfid.c#L187); this belongs to Member 2 and
-  should be removed or changed to accept the already-initialized bus.
+  the logger task attempts SD mounting. SD CS is GPIO 27; RFID CS remains GPIO
+  5/17. The ESP-IDF SPI driver serializes transactions for the shared bus.
+  `rfid.c` now accepts the already-initialized bus and only adds its devices.
 - Fixed persistence-cache races by adding `s_state_mutex` in `state.c`.
   Access/admin cache updates, dirty state, getters, and last-save time are now
   protected. `state_save_locked()` snapshots under the state mutex, releases
@@ -354,11 +352,6 @@ deferred state-writer task that commits a copied snapshot after releasing the
 user mutex.
 
 ### Remaining integration issues (not changed)
-
-- [`rfid.c:187-188`](../main/rfid.c#L187) repeats SPI2 initialization after
-  storage owns bus initialization. Suggested patch: remove that call and
-  leave bus initialization to `storage_start()`, or check
-  `ESP_ERR_INVALID_STATE` explicitly.
 - [`admin.c:21-39`](../main/admin.c#L21) and
   [`admin.c:472-485`](../main/admin.c#L472) access admin globals from both
   console and monitor tasks without a mutex. Suggested patch: add an admin
@@ -424,7 +417,7 @@ user mutex.
 - The existing weak console hooks are intentionally left in
   [`console.c`](../main/console.c); the strong implementations in `storage.c`
   override them without refactoring Member 4's file.
-- `diagram.json` adds a `wokwi-microsd-card` on shared SPI and CS GPIO 4.
+- `diagram.json` adds a `wokwi-microsd-card` on shared SPI and dedicated CS GPIO 27.
   No existing reader or LED pin was changed.
 
 ### Validation
@@ -496,3 +489,23 @@ For a clean committed-state clone, clone the committed branch into a
 temporary directory and run the same commands. Repair/recreate the PlatformIO
 ESP-IDF 5.5 Python environment before retrying that environment; do not copy
 packages from the 6.1 environment.
+
+## SD wiring/pin map
+
+The SD card shares the SPI signals with both RFID readers but has its own chip
+select. Card-detect and write-protect are not wired and are explicitly
+disabled in the SD SPI configuration.
+
+| Signal | ESP32 GPIO | Code | Diagram |
+|---|---:|---|---|
+| SD SCK | 18 | `SPI_SCK_PIN` | `sd:SCK` -> `esp:18` |
+| SD MISO / DO | 19 | `SPI_MISO_PIN` | `sd:MISO` -> `esp:19` |
+| SD MOSI / DI | 23 | `SPI_MOSI_PIN` | `sd:MOSI` -> `esp:23` |
+| SD CS | 27 | `SD_CS_PIN` | `sd:CS` -> `esp:27` |
+| SD VCC | 3V3 | diagram only | `sd:VCC` -> `esp:3V3` |
+| SD GND | GND | diagram only | `sd:GND` -> `esp:GND.1` |
+| SD CD | not used | `SDSPI_SLOT_NO_CD` | not wired |
+| SD WP | not used | `SDSPI_SLOT_NO_WP` | not wired |
+
+`storage_start()` initializes `SPI2_HOST` exactly once before creating the
+logger task; `rfid_start()` only adds the RFID devices to that existing bus.

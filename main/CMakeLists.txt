@@ -9,7 +9,6 @@ idf_component_register(
         "state.c"
     INCLUDE_DIRS "."
     REQUIRES
-        lighting
         esp_common
         esp_driver_gpio
         esp_driver_sdmmc
@@ -19,6 +18,7 @@ idf_component_register(
         esp_timer
         fatfs
         freertos
+        lighting
         log
         nvs_flash
         sdmmc

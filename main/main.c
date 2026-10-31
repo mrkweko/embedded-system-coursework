@@ -48,7 +48,4 @@ void app_main(void)
 
     // Member 1
     lighting_init();
-
-    // Other group members' tasks
-    // rooms_start();    // Member 1
 }

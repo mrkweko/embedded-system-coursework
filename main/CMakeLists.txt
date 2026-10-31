@@ -5,6 +5,21 @@ idf_component_register(
         "admin.c"
         "access.c"
         "rfid.c"
+        "storage.c"
+        "state.c"
     INCLUDE_DIRS "."
-    REQUIRES lighting esp_driver_gpio esp_driver_spi esp_driver_uart esp_timer log
+    REQUIRES
+        lighting
+        esp_common
+        esp_driver_gpio
+        esp_driver_sdmmc
+        esp_driver_sdspi
+        esp_driver_spi
+        esp_driver_uart
+        esp_timer
+        fatfs
+        freertos
+        log
+        nvs_flash
+        sdmmc
 )

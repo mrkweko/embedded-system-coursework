@@ -12,6 +12,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "console.h"                // scan_event_t, scan_queue
+#include "storage.h"                // [kweko] enqueue RFID events without blocking
 
 // Pins (must match diagram.json). SCK, MISO and MOSI are shared; each reader has its own SDA and RST.
 #define PIN_SCK   18
@@ -174,6 +175,8 @@ static void rfid_task(void *arg)
                 continue;
             }
             printf("\n[RFID] %s reader: card %s\n", r->entry ? "ENTRY" : "EXIT", ev.uid);
+            log_event(LOG_EVENT_RFID_SCAN, "%s reader: card %s",
+                      r->entry ? "ENTRY" : "EXIT", ev.uid);
             xQueueSend(scan_queue, &ev, 0);
         }
         vTaskDelay(pdMS_TO_TICKS(20));                  // poll often so a short TAP is not missed
@@ -182,9 +185,7 @@ static void rfid_task(void *arg)
 
 void rfid_start(void)
 {
-    spi_bus_config_t bus = { .mosi_io_num = PIN_MOSI, .miso_io_num = PIN_MISO, .sclk_io_num = PIN_SCK,
-                             .quadwp_io_num = -1, .quadhd_io_num = -1, .max_transfer_sz = 4000 };
-    spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);   // harmless if the SD card code started the bus first
+    // [kweko] sd fix: storage_start initializes SPI2_HOST before this function.
     reader_init(&s_readers[0]);
     reader_init(&s_readers[1]);
     xTaskCreate(rfid_task, "rfid", 4096, NULL, 4, NULL);

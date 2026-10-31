@@ -13,6 +13,8 @@
 #include "admin.h"
 #include "shared.h"   // for scan_queue
 #include "access.h"   // for access_schedule_state()
+#include "storage.h"  // [kweko] status/log data comes from RAM logger APIs
+#include "state.h"    // [kweko] expose last successful NVS save
 
 #define CONSOLE_LINE_MAX 96
 #define ARGV_MAX 6
@@ -101,7 +103,7 @@ __attribute__((weak)) void logger_print_recent(int n)
 static void cmd_log(int n)
 {
     if (n < 1)  n = 10;
-    if (n > 50) n = 50;
+    if (n > LOG_RING_SIZE) n = LOG_RING_SIZE; // [kweko] match RAM history capacity
     printf("---- LAST %d EVENTS ----\n", n);
     logger_print_recent(n);
 }
@@ -122,13 +124,17 @@ static void cmd_status(void)
     xSemaphoreGive(g_users_mutex);
 
     unsigned long up = (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS / 1000);
-    int dropped = logger_dropped_count();
+    uint32_t dropped = log_dropped_count(); // [kweko] preserve saturating counter width
+    time_t last_save = state_last_save_time();
 
     printf("---- SYSTEM STATUS ----\n");
     printf("  Uptime            : %lu s\n", up);
     printf("  Building access   : %s\n", access_is_open() ? "OPEN" : "CLOSED");
     printf("  Registered users  : %d\n", registered);
     printf("  People inside     : %d\n", inside);
+    printf("  SD logging        : %s\n", log_sd_ok() ? "OK" : "NOT AVAILABLE");
+    printf("  Entries logged    : %lu\n", (unsigned long)log_entries_count());
+    printf("  Last state save   : %s\n", last_save == 0 ? "never" : ctime(&last_save));
 
     for (int r = 1; r <= 2; r++) {
         room_status_t s;
@@ -139,8 +145,7 @@ static void cmd_status(void)
             printf("  Room %d            : not available yet\n", r);
     }
 
-    if (dropped >= 0) printf("  Log events dropped: %d\n", dropped);
-    else              printf("  Log events dropped: not available yet\n");
+    printf("  Log events dropped: %lu\n", (unsigned long)dropped);
 }
 
 static void cmd_scan(const char *uid, const char *dir)

@@ -11,6 +11,8 @@
 #include "driver/gpio.h"
 #include "console.h"                    // scan_event_t, scan_queue
 #include "shared.h"                     // user_t, g_users, g_n_users, g_users_mutex
+#include "storage.h"                    // [kweko] enqueue access events without blocking
+#include "state.h"
 
 void rfid_start(void);                  // in rfid.c: starts the two RFID readers
 
@@ -18,6 +20,15 @@ void rfid_start(void);                  // in rfid.c: starts the two RFID reader
 #define PIN_EXIT_DOOR   GPIO_NUM_26     // yellow LED = exit door unlocked
 
 // ---------- PART 1: access hours (my data) ----------
+/*
+ * Lock ownership:
+ *   s_mutex protects s_open_min, s_close_min, and s_emergency.
+ *   g_users_mutex protects g_users and g_n_users (shared.h contract).
+ *   storage.c owns the log queue, ring mutex, and SD status/counter lock.
+ * Tasks must not hold two locks at once. In particular, log_event() is called
+ * only after the access and user locks are released, because it may take the
+ * logger queue's internal lock.
+ */
 static SemaphoreHandle_t s_mutex;       // protects the three values below
 static int  s_open_min  = 7 * 60;       // opens 07:00 (minutes after midnight)
 static int  s_close_min = 20 * 60;      // closes 20:00
@@ -61,7 +72,9 @@ void access_set_hours(int open_min, int close_min)
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     s_open_min = open_min;
     s_close_min = close_min;
+    bool emergency = s_emergency;
     xSemaphoreGive(s_mutex);
+    state_update_access(open_min, close_min, emergency);
 }
 
 void access_get_hours(int *open_min, int *close_min)
@@ -76,7 +89,10 @@ void access_set_emergency(bool on)
 {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     s_emergency = on;
+    int open_min = s_open_min;
+    int close_min = s_close_min;
     xSemaphoreGive(s_mutex);
+    state_update_access(open_min, close_min, on);
 }
 
 // ---------- PART 2: test users and clock ----------
@@ -148,6 +164,8 @@ static void handle_scan(const scan_event_t *ev)
             denied = ev->entry ? "ALREADY INSIDE" : "NOT INSIDE";
         } else {
             u->inside = ev->entry;
+            state_mark_dirty();
+            state_save_locked(); // [kweko] persist occupancy before releasing state mutex
         }
     }
     xSemaphoreGive(g_users_mutex);
@@ -155,9 +173,11 @@ static void handle_scan(const scan_event_t *ev)
     // 3. Slow things (printing, the door delay) happen after unlocking
     if (denied != NULL) {
         printf("\n[ACCESS] %s DENIED %s (%s): %s\n", door, name, ev->uid, denied);
+        log_event(LOG_EVENT_ACCESS_DENIED, "%s %s %s: %s", door, name, ev->uid, denied);
         return;
     }
     printf("\n[ACCESS] %s GRANTED %s (%s)%s\n", door, name, ev->uid, open ? "" : " [EMERGENCY EXIT]");
+    log_event(LOG_EVENT_ACCESS_GRANTED, "%s %s %s", door, name, ev->uid);
     gpio_num_t pin = ev->entry ? PIN_ENTRY_DOOR : PIN_EXIT_DOOR;
     gpio_set_level(pin, 1);                 // unlock the door for 2 seconds
     vTaskDelay(pdMS_TO_TICKS(2000));
@@ -178,6 +198,14 @@ static void access_task(void *arg)
 void access_start(void)
 {
     s_mutex = xSemaphoreCreateMutex();
+    int open_min;
+    int close_min;
+    bool emergency;
+    state_get_loaded_access(&open_min, &close_min, &emergency);
+    s_open_min = open_min;
+    s_close_min = close_min;
+    s_emergency = emergency;
+    state_update_access(s_open_min, s_close_min, s_emergency);
     tmp_clock_init();
     seed_test_users();                  // needs g_users_mutex, created in app_main()
 

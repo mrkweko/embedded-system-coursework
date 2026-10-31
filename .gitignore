@@ -1,6 +1,11 @@
 build/
+.pio/
 managed_components/
 sdkconfig.old
+sdkconfig.*
 .vscode/
 .cache/
 *.log
+sdkconfig
+sdkconfig.old
+sdkconfig.bak

@@ -1,4 +1,4 @@
 [wokwi]
 version = 1
-firmware = 'build/cocis_smart_control.bin'
-elf = 'build/cocis_smart_control.elf'
+firmware = '.pio/build/esp32dev-idf61/firmware.bin'
+elf = '.pio/build/esp32dev-idf61/firmware.elf'

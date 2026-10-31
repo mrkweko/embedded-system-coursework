@@ -8,6 +8,8 @@
 
 #include "driver/spi_common.h"
 #include "driver/gpio.h"
+#include "driver/spi_master.h"
+#include "esp_err.h"
 #include "esp_vfs_fat.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -20,6 +22,9 @@
 #define SD_RETRY_TICKS pdMS_TO_TICKS(10000)
 #define LOG_FILE_NAME SD_MOUNT_POINT "/events.csv"
 #define VALID_TIME_THRESHOLD ((time_t)1700000000)
+#define SPI_SCK_PIN 18
+#define SPI_MISO_PIN 19
+#define SPI_MOSI_PIN 23
 
 static QueueHandle_t s_log_queue;
 static SemaphoreHandle_t s_ring_mutex;
@@ -28,6 +33,7 @@ static log_entry_t s_ring[LOG_RING_SIZE];
 static int s_ring_count;
 static int s_ring_next;
 static uint32_t s_dropped_events;
+static uint32_t s_entries_logged;
 static bool s_sd_ok;
 
 static const char *event_type_name(log_event_type_t type)
@@ -152,6 +158,10 @@ static void logger_task(void *arg)
     (void)arg;
     sdmmc_card_t *card = NULL;
     TickType_t next_retry = 0;
+#ifdef CONFIG_LOGGER_STACK_DEBUG
+    printf("[LOGGER] stack high-water mark: %u words\n",
+           (unsigned)uxTaskGetStackHighWaterMark(NULL));
+#endif
 
     for (;;) {
         log_entry_t entry;
@@ -167,6 +177,11 @@ static void logger_task(void *arg)
         }
 
         add_to_ring(&entry);
+        portENTER_CRITICAL(&s_status_lock);
+        if (s_entries_logged < UINT32_MAX) {
+            s_entries_logged++;
+        }
+        portEXIT_CRITICAL(&s_status_lock);
         if (card == NULL) {
             if (xTaskGetTickCount() >= next_retry) {
                 if (mount_sd(&card)) {
@@ -250,6 +265,15 @@ bool log_sd_ok(void)
     return ok;
 }
 
+uint32_t log_entries_count(void)
+{
+    uint32_t count;
+    portENTER_CRITICAL(&s_status_lock);
+    count = s_entries_logged;
+    portEXIT_CRITICAL(&s_status_lock);
+    return count;
+}
+
 void logger_print_recent(int n)
 {
     log_entry_t entries[LOG_RING_SIZE];
@@ -273,6 +297,19 @@ int logger_dropped_count(void)
 
 void storage_start(void)
 {
+    spi_bus_config_t bus = {
+        .mosi_io_num = SPI_MOSI_PIN,
+        .miso_io_num = SPI_MISO_PIN,
+        .sclk_io_num = SPI_SCK_PIN,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 4000,
+    };
+    esp_err_t spi_err = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
+    if (spi_err != ESP_OK && spi_err != ESP_ERR_INVALID_STATE) {
+        printf("[LOGGER] SPI bus initialization failed: %s\n",
+               esp_err_to_name(spi_err));
+    }
     s_ring_mutex = xSemaphoreCreateMutex();
     s_log_queue = xQueueCreate(LOG_QUEUE_LENGTH, sizeof(log_entry_t));
     if (s_ring_mutex == NULL || s_log_queue == NULL) {

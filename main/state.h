@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <time.h>
 
 void state_load(void);
 void state_log_boot(void);
@@ -20,3 +21,4 @@ void state_update_admin(const char pin[9], unsigned int timeout_seconds,
 bool state_get_loaded_access(int *open_min, int *close_min, bool *emergency);
 bool state_get_loaded_admin(char pin[9], unsigned int *timeout_seconds,
                             int *current_time, bool *emergency);
+time_t state_last_save_time(void);

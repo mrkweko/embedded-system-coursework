@@ -255,10 +255,11 @@ admin is in `admin.c`; RFID polling is in `rfid.c`.
 - [`access.c`](../main/access.c) updates the state cache whenever its schedule
   setters run; this keeps the effective access schedule aligned with the
   admin settings before the next save.
-- `admin_state_snapshot(...)` is the read-only snapshot used by
-  `state_save_locked()` for the private admin PIN/timeout/simulated-time
-  fields. `state_get_loaded_access(...)` and `state_get_loaded_admin(...)`
-  transfer validated boot values to the owning modules.
+- `state_update_admin(...)` and `state_update_access(...)` maintain the
+  private cached settings used by `state_save_locked()`;
+  `state_get_loaded_access(...)` and `state_get_loaded_admin(...)` transfer
+  validated boot values to the owning modules. NVS snapshots no longer call
+  into admin code, avoiding a cross-module admin-state race.
 
 ### Wokwi reboot test
 
@@ -276,6 +277,138 @@ admin is in `admin.c`; RFID polling is in `rfid.c`.
 7. To test fallback, erase the Wokwi NVS/flash image or call the future
    authenticated factory-reset command, reboot, and verify `state defaulted`
    followed by the five seeded users and safe defaults.
+
+## Session 4
+
+### Review findings and fixes
+
+- Fixed explicit SPI startup ordering in [`storage.c`](../main/storage.c):
+  `storage_start()` initializes SPI2 with SCK 18, MISO 19, and MOSI 23 before
+  the logger task attempts SD mounting. SD CS remains GPIO 4; RFID CS remains
+  GPIO 5/17. The ESP-IDF SPI driver serializes transactions for the shared
+  bus. `rfid.c` still redundantly calls `spi_bus_initialize()` and ignores its
+  return value at [`rfid.c`](../main/rfid.c#L187); this belongs to Member 2 and
+  should be removed or changed to accept the already-initialized bus.
+- Fixed persistence-cache races by adding `s_state_mutex` in `state.c`.
+  Access/admin cache updates, dirty state, getters, and last-save time are now
+  protected. `state_save_locked()` snapshots under the state mutex, releases
+  it, then performs NVS I/O while honoring its caller-held
+  `g_users_mutex` contract.
+- Fixed a second persistence race found during review: `state.c` now uses
+  local NVS handles serialized by `s_nvs_mutex`, rather than one shared
+  handle. A dirty-generation counter prevents a newer mutation from being
+  cleared when an older concurrent snapshot finishes committing.
+- Added `log_entries_count()` (saturating `uint32_t` counter), and
+  `state_last_save_time()`. `status` now displays SD availability, entries
+  received by the logger, dropped events, and the last successful save.
+  `log [n]` now clamps directly to `LOG_RING_SIZE` (20), avoiding a misleading
+  “last 50” heading; it still uses the existing compatibility wrapper, which
+  reads only the RAM ring through `log_get_recent`.
+- Added debug-only logger stack instrumentation guarded by
+  `CONFIG_LOGGER_STACK_DEBUG`; it prints
+  `[LOGGER] stack high-water mark: <words> words` at task startup. The logger
+  task remains 4096 words. No runtime measurement was possible without the
+  ESP-IDF build.
+- Made the total logged and dropped counters saturate at `UINT32_MAX`; they do
+  not wrap. The queue remains length 32 and all producer sends use zero wait.
+- SD absence/removal remains nonfatal: the logger keeps draining into the RAM
+  ring, marks `sd_ok` false after mount/write failure, and retries every
+  10 seconds. Queue order is FIFO; timestamps are captured at enqueue time,
+  so equal timestamps retain queue order. The logger task is the only SD
+  accessor.
+- Producer timestamps preserve event-capture time, while CSV line order
+  preserves queue-delivery order. With multiple producers, a task preempted
+  after capturing its timestamp can therefore produce a slightly older
+  timestamp after a newer one; strict chronological output would require
+  logger-assigned timestamps or sequence-number sorting. This is documented,
+  not silently normalized.
+- Versioned the persisted blob to version 2 and persisted
+  `last_save_time`, so status can report the last successful save after reboot.
+
+### Lock-acquisition graph
+
+```text
+admin command / access mutation
+        |
+        v
+  g_users_mutex  --->  s_state_mutex  --->  (released before NVS I/O)
+        |                     ^
+        |                     |
+        +---------------------+
+        |
+        +--------------------> s_nvs_mutex (NVS commit)
+
+state cache update  --->  s_state_mutex
+logger task          --->  s_ring_mutex
+log_event            --->  FreeRTOS log-queue internals, then s_status_lock
+status/log display   --->  g_users_mutex; then separate getter calls
+```
+
+No code path intentionally acquires `s_state_mutex` and then
+`g_users_mutex`; therefore the state-cache graph has no cycle. `log_event()`
+is called after access/user locks are released. NVS commit still occurs while
+the caller holds `g_users_mutex` by API contract; this can cause priority
+inversion/blocking for the priority-5 access task during flash I/O. It is
+bounded and infrequent, but the recommended future patch is a single-slot
+deferred state-writer task that commits a copied snapshot after releasing the
+user mutex.
+
+### Remaining integration issues (not changed)
+
+- [`rfid.c:187-188`](../main/rfid.c#L187) repeats SPI2 initialization after
+  storage owns bus initialization. Suggested patch: remove that call and
+  leave bus initialization to `storage_start()`, or check
+  `ESP_ERR_INVALID_STATE` explicitly.
+- [`admin.c:21-39`](../main/admin.c#L21) and
+  [`admin.c:472-485`](../main/admin.c#L472) access admin globals from both
+  console and monitor tasks without a mutex. Suggested patch: add an admin
+  mutex or confine all admin-state changes to one task; do not make the
+  logger/state mutex protect those unrelated fields.
+- [`admin.c:213-330`](../main/admin.c#L213) performs synchronous NVS commits
+  while holding `g_users_mutex` through `state_save_locked()`. This is a
+  priority-inversion risk, documented above; suggested patch is the deferred
+  writer design.
+- [`console.c:93-111`](../main/console.c#L93) retains weak compatibility
+  fallbacks. They are overridden by the strong storage definitions today, but
+  the preferred future patch is for Member 4 to include `storage.h` and call
+  `log_get_recent`, `log_dropped_count`, and `log_sd_ok` directly.
+
+### Wokwi safety checklist
+
+1. **Normal logging:** start Wokwi with the SD card present; expect the boot
+   event `SYSTEM,state defaulted, 0 user records` on a blank NVS, then seeded
+   users. Submit `scan 01020304 in`; expect `[ACCESS] ENTRY GRANTED` and a
+   CSV `ACCESS_GRANTED` line in `/sd/events.csv`. Run `log 5`; expect the
+   event in oldest-first RAM order and `status` to show `SD logging: OK`.
+2. **Burst of 200:** add a temporary test loop/task that calls
+   `log_event(LOG_EVENT_SYSTEM, "burst %d", i)` for `i=0..199` without delay.
+   The producer must return immediately; `status` must show
+   `Entries logged` up to 200 plus prior events and a nonzero
+   `Log events dropped` if the queue cannot drain fast enough. `log 20` must
+   show no more than 20 entries and must not block on SD.
+3. **No SD:** remove/comment the `wokwi-microsd-card` part/wires and reboot.
+   Expect continued access operation, `status` showing `SD logging: NOT
+   AVAILABLE`, and `log 20` still showing RAM events. No panic or reboot is
+   expected; after reinserting the card, expect recovery within one retry
+   interval after a new event.
+4. **Reboot persistence:** set schedule, timeout, PIN, add a user, scan the
+   user in, and confirm `who`. Reset without scanning out. Expect boot
+   `SYSTEM,state restored, <n> user records`, the user still `INSIDE`, the
+   changed PIN to authenticate, and the settings to remain changed. `status`
+   should report the persisted last-save time.
+5. **Factory defaults:** invoke the future authenticated CLI wrapper for
+   `state_factory_reset()` or erase the NVS/flash image, then reboot. Expect
+   `SYSTEM,state defaulted, 0 user records`, safe defaults (07:00-20:00,
+   timeout 120, PIN 1234), and the five Wokwi seed users after access
+   initialization. The factory-reset helper itself is implemented but no
+   command was added by this task.
+
+### Validation
+
+- `git diff --check` and JSON syntax checks passed.
+- No ESP-IDF/Arduino/PlatformIO toolchain is installed, so compile, stack
+  high-water values, SPI runtime behavior, Wokwi output, and exact NVS reboot
+  behavior remain unverified.
 
 ### Integration hooks and other-member edits
 

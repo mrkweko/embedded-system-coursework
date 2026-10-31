@@ -29,6 +29,7 @@ bool log_event(log_event_type_t type, const char *fmt, ...);
 int log_get_recent(int n, log_entry_t *out);
 uint32_t log_dropped_count(void);
 bool log_sd_ok(void);
+uint32_t log_entries_count(void);
 
 /* Compatibility hooks used by the existing console module. */
 void logger_print_recent(int n);

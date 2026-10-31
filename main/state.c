@@ -6,13 +6,12 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 
-#include "admin.h"
 #include "freertos/semphr.h"
 #include "shared.h"
 #include "storage.h"
 
 #define STATE_NAMESPACE "cocis_state"
-#define STATE_VERSION 1U
+#define STATE_VERSION 2U
 #define STATE_VALID_SENTINEL 0xC0C15A7EU
 #define STATE_DEFAULT_OPEN_MIN (7 * 60)
 #define STATE_DEFAULT_CLOSE_MIN (20 * 60)
@@ -29,6 +28,7 @@ typedef struct {
     bool emergency;
     char admin_pin[9];
     int32_t n_users;
+    time_t last_save_time;
     user_t users[MAX_USERS];
 } state_blob_t;
 
@@ -40,8 +40,11 @@ static bool s_emergency;
 static char s_admin_pin[9] = "1234";
 static bool s_loaded;
 static bool s_dirty;
+static uint32_t s_dirty_generation;
 static int s_loaded_records;
-static nvs_handle_t s_nvs;
+static SemaphoreHandle_t s_state_mutex;
+static SemaphoreHandle_t s_nvs_mutex;
+static time_t s_last_save_time;
 
 static uint32_t state_crc(const state_blob_t *state)
 {
@@ -84,6 +87,8 @@ static bool valid_blob(const state_blob_t *state, size_t size, uint32_t crc)
 
 void state_load(void)
 {
+    s_state_mutex = xSemaphoreCreateMutex();
+    s_nvs_mutex = xSemaphoreCreateMutex();
     set_defaults();
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
@@ -96,16 +101,20 @@ void state_load(void)
     uint32_t crc = 0;
     size_t size = sizeof(state);
     bool restored = false;
-    if (err == ESP_OK &&
-        nvs_open(STATE_NAMESPACE, NVS_READWRITE, &s_nvs) == ESP_OK &&
-        nvs_get_blob(s_nvs, "state", &state, &size) == ESP_OK &&
-        nvs_get_u32(s_nvs, "crc", &crc) == ESP_OK &&
-        valid_blob(&state, size, crc)) {
+    nvs_handle_t handle = 0;
+    bool read_ok = false;
+    if (err == ESP_OK && nvs_open(STATE_NAMESPACE, NVS_READWRITE, &handle) == ESP_OK) {
+        read_ok = nvs_get_blob(handle, "state", &state, &size) == ESP_OK &&
+                  nvs_get_u32(handle, "crc", &crc) == ESP_OK;
+        nvs_close(handle);
+    }
+    if (read_ok && valid_blob(&state, size, crc)) {
         s_open_min = state.open_min;
         s_close_min = state.close_min;
         s_current_time = state.current_time;
         s_timeout_seconds = state.timeout_seconds;
         s_emergency = state.emergency;
+        s_last_save_time = state.last_save_time;
         memcpy(s_admin_pin, state.admin_pin, sizeof(s_admin_pin));
 
         xSemaphoreTake(g_users_mutex, portMAX_DELAY);
@@ -121,10 +130,6 @@ void state_load(void)
         xSemaphoreGive(g_users_mutex);
     }
 
-    if (s_nvs != 0) {
-        nvs_close(s_nvs);
-        s_nvs = 0;
-    }
     s_loaded_records = restored ? state.n_users : 0;
 }
 
@@ -139,10 +144,13 @@ bool state_get_loaded_access(int *open_min, int *close_min, bool *emergency)
     if (!open_min || !close_min || !emergency) {
         return false;
     }
+    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
     *open_min = s_open_min;
     *close_min = s_close_min;
     *emergency = s_emergency;
-    return s_loaded;
+    bool loaded = s_loaded;
+    xSemaphoreGive(s_state_mutex);
+    return loaded;
 }
 
 bool state_get_loaded_admin(char pin[9], unsigned int *timeout_seconds,
@@ -151,41 +159,57 @@ bool state_get_loaded_admin(char pin[9], unsigned int *timeout_seconds,
     if (!pin || !timeout_seconds || !current_time || !emergency) {
         return false;
     }
+    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
     strlcpy(pin, s_admin_pin, 9);
     *timeout_seconds = s_timeout_seconds;
     *current_time = s_current_time;
     *emergency = s_emergency;
-    return s_loaded;
+    bool loaded = s_loaded;
+    xSemaphoreGive(s_state_mutex);
+    return loaded;
 }
 
 void state_update_access(int open_min, int close_min, bool emergency)
 {
+    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
     s_open_min = open_min;
     s_close_min = close_min;
     s_emergency = emergency;
+    xSemaphoreGive(s_state_mutex);
 }
 
 void state_update_admin(const char pin[9], unsigned int timeout_seconds,
                         int current_time)
 {
+    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
     if (pin != NULL) {
         strlcpy(s_admin_pin, pin, sizeof(s_admin_pin));
     }
     s_timeout_seconds = timeout_seconds;
     s_current_time = current_time;
+    xSemaphoreGive(s_state_mutex);
 }
 
 void state_mark_dirty(void)
 {
+    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
     s_dirty = true;
+    s_dirty_generation++;
+    xSemaphoreGive(s_state_mutex);
 }
 
 void state_save_locked(void)
 {
-    if (!s_dirty || g_users_mutex == NULL) {
+    if (g_users_mutex == NULL) {
         return;
     }
 
+    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+    if (!s_dirty) {
+        xSemaphoreGive(s_state_mutex);
+        return;
+    }
+    uint32_t generation = s_dirty_generation;
     state_blob_t state = {
         .version = STATE_VERSION,
         .sentinel = STATE_VALID_SENTINEL,
@@ -195,15 +219,11 @@ void state_save_locked(void)
         .timeout_seconds = s_timeout_seconds,
         .emergency = s_emergency,
         .n_users = g_n_users,
+        .last_save_time = time(NULL),
     };
-    unsigned int timeout_seconds;
-    int current_time;
-    admin_state_snapshot(state.admin_pin, &timeout_seconds, &current_time);
-    state.timeout_seconds = timeout_seconds;
-    state.current_time = current_time;
-    s_timeout_seconds = timeout_seconds;
-    s_current_time = current_time;
+    memcpy(state.admin_pin, s_admin_pin, sizeof(state.admin_pin));
     memcpy(state.users, g_users, sizeof(state.users));
+    xSemaphoreGive(s_state_mutex);
     uint32_t crc = state_crc(&state);
 
     /*
@@ -212,16 +232,24 @@ void state_save_locked(void)
      * no logger or access lock is taken here; callers must keep mutations
      * infrequent to limit flash wear.
      */
-    if (nvs_open(STATE_NAMESPACE, NVS_READWRITE, &s_nvs) == ESP_OK &&
-        nvs_set_blob(s_nvs, "state", &state, sizeof(state)) == ESP_OK &&
-        nvs_set_u32(s_nvs, "crc", crc) == ESP_OK &&
-        nvs_commit(s_nvs) == ESP_OK) {
-        s_dirty = false;
-        s_loaded = true;
+    nvs_handle_t handle = 0;
+    xSemaphoreTake(s_nvs_mutex, portMAX_DELAY);
+    bool saved = nvs_open(STATE_NAMESPACE, NVS_READWRITE, &handle) == ESP_OK &&
+                 nvs_set_blob(handle, "state", &state, sizeof(state)) == ESP_OK &&
+                 nvs_set_u32(handle, "crc", crc) == ESP_OK &&
+                 nvs_commit(handle) == ESP_OK;
+    if (handle != 0) {
+        nvs_close(handle);
     }
-    if (s_nvs != 0) {
-        nvs_close(s_nvs);
-        s_nvs = 0;
+    xSemaphoreGive(s_nvs_mutex);
+    if (saved) {
+        xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+        if (s_dirty_generation == generation) {
+            s_dirty = false;
+        }
+        s_loaded = true;
+        s_last_save_time = time(NULL);
+        xSemaphoreGive(s_state_mutex);
     }
 }
 
@@ -235,16 +263,30 @@ void state_save(void)
 
 void state_factory_reset(void)
 {
-    if (nvs_open(STATE_NAMESPACE, NVS_READWRITE, &s_nvs) == ESP_OK) {
-        nvs_erase_all(s_nvs);
-        nvs_commit(s_nvs);
-        nvs_close(s_nvs);
-        s_nvs = 0;
+    nvs_handle_t handle = 0;
+    xSemaphoreTake(s_nvs_mutex, portMAX_DELAY);
+    if (nvs_open(STATE_NAMESPACE, NVS_READWRITE, &handle) == ESP_OK) {
+        nvs_erase_all(handle);
+        nvs_commit(handle);
+        nvs_close(handle);
     }
+    xSemaphoreGive(s_nvs_mutex);
+    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
     set_defaults();
+    s_dirty = false;
+    s_last_save_time = 0;
+    xSemaphoreGive(s_state_mutex);
     xSemaphoreTake(g_users_mutex, portMAX_DELAY);
     memset(g_users, 0, sizeof(g_users));
     g_n_users = 0;
     xSemaphoreGive(g_users_mutex);
     log_event(LOG_EVENT_SYSTEM, "state factory reset");
+}
+
+time_t state_last_save_time(void)
+{
+    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+    time_t timestamp = s_last_save_time;
+    xSemaphoreGive(s_state_mutex);
+    return timestamp;
 }

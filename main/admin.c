@@ -11,6 +11,7 @@
 #include "shared.h"
 #include "access.h"
 #include "state.h"
+#include "esp_system.h"
 
 /* System settings */
 #define DEFAULT_ADMIN_PIN "1234"
@@ -478,7 +479,8 @@ bool admin_handle_command(int argc, char *argv[])
         strcmp(argv[0], "users") == 0 ||
         strcmp(argv[0], "timeout") == 0 ||
         strcmp(argv[0], "emergency") == 0 ||
-        strcmp(argv[0], "settings") == 0;
+        strcmp(argv[0], "settings") == 0 ||
+        strcmp(argv[0], "reboot") == 0;
 
     if (!admin_command) return false;
 
@@ -505,6 +507,14 @@ bool admin_handle_command(int argc, char *argv[])
         handle_emergency(argc, argv);
     } else if (strcmp(argv[0], "settings") == 0) {
         handle_settings();
+    } else if (strcmp(argv[0], "reboot") == 0) {
+        if (argc != 1) {
+            printf("Usage: reboot\\n");
+        } else {
+            printf("Rebooting...\\n");
+            fflush(stdout);
+            esp_restart();
+        }
     }
 
     return true;

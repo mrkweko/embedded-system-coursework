@@ -129,7 +129,11 @@ static void cmd_status(void)
 
     printf("---- SYSTEM STATUS ----\n");
     printf("  Uptime            : %lu s\n", up);
-    printf("  Building access   : %s\n", access_is_open() ? "OPEN" : "CLOSED");
+    int sched = access_schedule_state();
+    printf("  Building access   : %s\n",
+        sched == 1 ? "OPEN" :
+        sched == 0 ? "CLOSED" :
+        sched == 2 ? "CLOSED (emergency exit allowed)" : "unknown");
     printf("  Registered users  : %d\n", registered);
     printf("  People inside     : %d\n", inside);
     printf("  SD logging        : %s\n", log_sd_ok() ? "OK" : "NOT AVAILABLE");

@@ -6,3 +6,6 @@ sdkconfig.*
 .vscode/
 .cache/
 *.log
+sdkconfig
+sdkconfig.old
+sdkconfig.bak

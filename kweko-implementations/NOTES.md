@@ -499,8 +499,8 @@ disabled in the SD SPI configuration.
 | Signal | ESP32 GPIO | Code | Diagram |
 |---|---:|---|---|
 | SD SCK | 18 | `SPI_SCK_PIN` | `sd:SCK` -> `esp:18` |
-| SD MISO / DO | 19 | `SPI_MISO_PIN` | `sd:MISO` -> `esp:19` |
-| SD MOSI / DI | 23 | `SPI_MOSI_PIN` | `sd:MOSI` -> `esp:23` |
+| SD MISO / DO | 19 | `SPI_MISO_PIN` | `sd:DO` -> `esp:19` |
+| SD MOSI / DI | 23 | `SPI_MOSI_PIN` | `sd:DI` -> `esp:23` |
 | SD CS | 27 | `SD_CS_PIN` | `sd:CS` -> `esp:27` |
 | SD VCC | 3V3 | diagram only | `sd:VCC` -> `esp:3V3` |
 | SD GND | GND | diagram only | `sd:GND` -> `esp:GND.1` |
@@ -509,3 +509,19 @@ disabled in the SD SPI configuration.
 
 `storage_start()` initializes `SPI2_HOST` exactly once before creating the
 logger task; `rfid_start()` only adds the RFID devices to that existing bus.
+
+## SD wiring fix
+
+| Wokwi pin | ESP32 connection |
+|---|---|
+| CS | GPIO 27 |
+| SCK | GPIO 18 |
+| DO (MISO) | GPIO 19 |
+| DI (MOSI) | GPIO 23 |
+| VCC | 3V3 |
+| GND | GND |
+| CD | not wired |
+
+Wokwi's microSD part uses `DI` and `DO`, not `MOSI` and `MISO`; the old wires
+connected to nonexistent pins. The diagram now uses `sd:DI` and `sd:DO`,
+matching the existing SPI code and dedicated SD CS on GPIO 27.

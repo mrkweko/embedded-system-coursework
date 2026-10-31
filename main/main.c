@@ -10,6 +10,7 @@
 #include "console.h"
 #include "access.h"
 #include "admin.h"
+#include "lighting.h"
 
 #include "shared.h"
 // Queue for simulated RFID scans
@@ -39,7 +40,9 @@ void app_main(void)
     // Member 2
     access_start();
 
+    // Member 1
+    lighting_init();
+
     // Other group members' tasks
-    // rooms_start();    // Member 1
     // storage_start();  // Member 3
 }

@@ -184,7 +184,7 @@ admin is in `admin.c`; RFID polling is in `rfid.c`.
   `log_get_recent` clamps to the available entries and 20-entry ring size and
   copies oldest-first under the ring mutex. Console compatibility wrappers are
   `void logger_print_recent(int n)` and `int logger_dropped_count(void)`.
-- SD uses dedicated CS GPIO 27. SPI is shared with both MFRC522 readers on SCK GPIO 18,
+- SD uses dedicated CS GPIO 32. SPI is shared with both MFRC522 readers on SCK GPIO 18,
   MOSI GPIO 23, and MISO GPIO 19; reader CS pins remain GPIO 5 and 17, and
   reader reset pins remain GPIO 21 and 16. The SD module is wired to those
   pins in [`diagram.json`](../diagram.json). GPIO 25/26 remain the door LEDs.
@@ -284,7 +284,7 @@ admin is in `admin.c`; RFID polling is in `rfid.c`.
 
 - Fixed explicit SPI startup ordering in [`storage.c`](../main/storage.c):
   `storage_start()` initializes SPI2 with SCK 18, MISO 19, and MOSI 23 before
-  the logger task attempts SD mounting. SD CS is GPIO 27; RFID CS remains GPIO
+  the logger task attempts SD mounting. SD CS is GPIO 32; RFID CS remains GPIO
   5/17. The ESP-IDF SPI driver serializes transactions for the shared bus.
   `rfid.c` now accepts the already-initialized bus and only adds its devices.
 - Fixed persistence-cache races by adding `s_state_mutex` in `state.c`.
@@ -417,7 +417,7 @@ user mutex.
 - The existing weak console hooks are intentionally left in
   [`console.c`](../main/console.c); the strong implementations in `storage.c`
   override them without refactoring Member 4's file.
-- `diagram.json` adds a `wokwi-microsd-card` on shared SPI and dedicated CS GPIO 27.
+- `diagram.json` adds a `wokwi-microsd-card` on shared SPI and dedicated CS GPIO 32.
   No existing reader or LED pin was changed.
 
 ### Validation
@@ -501,7 +501,7 @@ disabled in the SD SPI configuration.
 | SD SCK | 18 | `SPI_SCK_PIN` | `sd:SCK` -> `esp:18` |
 | SD MISO / DO | 19 | `SPI_MISO_PIN` | `sd:DO` -> `esp:19` |
 | SD MOSI / DI | 23 | `SPI_MOSI_PIN` | `sd:DI` -> `esp:23` |
-| SD CS | 27 | `SD_CS_PIN` | `sd:CS` -> `esp:27` |
+| SD CS | 32 | `SD_CS_PIN` | `sd:CS` -> `esp:32` |
 | SD VCC | 3V3 | diagram only | `sd:VCC` -> `esp:3V3` |
 | SD GND | GND | diagram only | `sd:GND` -> `esp:GND.1` |
 | SD CD | not used | `SDSPI_SLOT_NO_CD` | not wired |
@@ -514,7 +514,7 @@ logger task; `rfid_start()` only adds the RFID devices to that existing bus.
 
 | Wokwi pin | ESP32 connection |
 |---|---|
-| CS | GPIO 27 |
+| CS | GPIO 32 |
 | SCK | GPIO 18 |
 | DO (MISO) | GPIO 19 |
 | DI (MOSI) | GPIO 23 |
@@ -524,4 +524,4 @@ logger task; `rfid_start()` only adds the RFID devices to that existing bus.
 
 Wokwi's microSD part uses `DI` and `DO`, not `MOSI` and `MISO`; the old wires
 connected to nonexistent pins. The diagram now uses `sd:DI` and `sd:DO`,
-matching the existing SPI code and dedicated SD CS on GPIO 27.
+matching the existing SPI code and dedicated SD CS on GPIO 32.

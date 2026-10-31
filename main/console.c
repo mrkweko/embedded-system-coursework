@@ -13,6 +13,7 @@
 #include "admin.h"
 #include "shared.h"   // for scan_queue
 #include "access.h"   // for access_schedule_state()
+#include "lighting.h"
 #include "storage.h"  // [kweko] status/log data comes from RAM logger APIs
 #include "state.h"    // [kweko] expose last successful NVS save
 
@@ -62,19 +63,6 @@ static void cmd_who(void)
     for (int i = 0; i < n; i++)
         printf("  %-12s (%s)\n", names[i], uids[i]);
     printf("%d person(s) inside\n", n);
-}
-
-typedef struct {
-    bool occupied;
-    bool light_on;
-} room_status_t;   // delete this when Member 1's rooms.h defines it, and #include "rooms.h" instead
-
-bool rooms_get_status(int room, room_status_t *out);   // real version: Member 1
-
-__attribute__((weak)) bool rooms_get_status(int room, room_status_t *out)
-{
-    (void)room; (void)out;
-    return false;   // fallback until rooms.c exists
 }
 
 static void cmd_rooms(void)

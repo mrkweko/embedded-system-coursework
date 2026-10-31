@@ -18,7 +18,7 @@
 #include "driver/sdspi_host.h"
 
 #define SD_MOUNT_POINT "/sd"
-#define SD_CS_PIN GPIO_NUM_27 // [kweko] sd fix: dedicated SD CS; RFID uses GPIO 5 and 17
+#define SD_CS_PIN GPIO_NUM_32 // Dedicated SD CS; GPIO 27 controls the Room 2 light.
 #define SD_RETRY_TICKS pdMS_TO_TICKS(10000)
 #define LOG_FILE_NAME SD_MOUNT_POINT "/events.csv"
 #define VALID_TIME_THRESHOLD ((time_t)1700000000)

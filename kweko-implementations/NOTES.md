@@ -1,0 +1,157 @@
+# Member 3 implementation handoff
+
+## Repository reality
+
+- This is an ESP-IDF C project, not an Arduino project with `sketch.ino`. The
+  application entry point is [`main/main.c`](../main/main.c); the component
+  sources are `main.c`, `console.c`, `admin.c`, `access.c`, and `rfid.c`
+  ([`main/CMakeLists.txt`](../main/CMakeLists.txt)).
+- [`diagram.json`](../diagram.json) currently contains one ESP32, two MFRC522
+  readers, and entry/exit LEDs on GPIO 25/26. There is no SD-card part or
+  wiring. No project documentation beyond source comments/configuration was
+  found.
+- Current `HEAD` is the 31-Oct baseline checkpoint. Recent history is mainly
+  by nushifah (Member 4 console/shared/status work), NSG1414
+  (Member 2 RFID/access-hours work), and Vee (admin work). The worktree was
+  clean before this file was added. Relevant commits include `cebd2a9`
+  (log/rooms weak hooks), `6ac5699` (shared users/`who`), `dc2d7d3`
+  (shared users and access schedule), and `c2ff74b` (remove temporary access
+  stub).
+
+## Actual sections and runtime objects
+
+| Object | Definition/use | Configuration and protection |
+|---|---|---|
+| `scan_queue` | [`main.c:16-16`](../main/main.c#L16), consumed by `access_task` | `xQueueCreate(8, sizeof(scan_event_t))`; `access_task` blocks forever on receive ([`access.c:165-174`](../main/access.c#L165)); console and RFID producers use zero-wait send ([`console.c:154-159`](../main/console.c#L154), [`rfid.c:176-177`](../main/rfid.c#L176)). |
+| `g_users`, `g_n_users` | [`main.c:18-19`](../main/main.c#L18), shared contract [`shared.h:8-27`](../main/shared.h#L8) | `g_users_mutex` must protect every read/write. `user_t.inside` is changed only by `handle_scan`; admin add/delete and console readers also use the mutex. |
+| `g_users_mutex` | Created in [`main.c:24-24`](../main/main.c#L24) | Mutex for the user table/count. All current users-table paths take it with `portMAX_DELAY`; print after releasing it. |
+| `s_mutex` | [`access.c:21-24`](../main/access.c#L21) | Mutex for access `s_open_min`, `s_close_min`, and `s_emergency`; access getters/setters and scan decision use it. It is not shared with admin's duplicate schedule variables. |
+| `console_task` | [`console.c:193-224`](../main/console.c#L193) | `xTaskCreate(..., "console", 6144, NULL, 3, NULL)`; no core affinity (scheduler may place it on either core). |
+| `access_task` | [`access.c:165-190`](../main/access.c#L165) | `xTaskCreate(..., "access", 4096, NULL, 5, NULL)`; no core affinity. Handles scans and holds no mutex during printing or the 2-second door delay. |
+| `rfid_task` | [`rfid.c:157-190`](../main/rfid.c#L157) | `xTaskCreate(..., "rfid", 4096, NULL, 4, NULL)`; no core affinity. Its reader state is task-local by ownership, but SPI calls can run concurrently with future SD code. |
+| `admin_monitor_task` | [`main.c:33-34`](../main/main.c#L33), implementation [`admin.c:472-485`](../main/admin.c#L472) | `xTaskCreate(..., "admin_monitor", 3072, NULL, 2, NULL)`; no core affinity. |
+
+There are no room or storage/logger tasks currently created. Planned section
+names in the prompt do not match this checkout: the actual access logic is
+`handle_scan`/`access_task` in `access.c`; console is the actual Section 7;
+admin is in `admin.c`; RFID polling is in `rfid.c`.
+
+## Logging and output
+
+- Access decisions print `[ACCESS] ... DENIED/GRANTED` in
+  [`access.c:157-163`](../main/access.c#L157).
+- RFID card detection prints `[RFID] ...` in [`rfid.c:176-176`](../main/rfid.c#L176)
+  and chip diagnostics use `ESP_LOGI` at [`rfid.c:151-153`](../main/rfid.c#L151).
+- Console help, status, who, rooms, scan-submission/errors, prompt/echo, and
+  unknown-command output are all `printf` calls in [`console.c:25-224`](../main/console.c#L25).
+- Admin login/logout, PIN, schedule, simulated time, users, timeout,
+  emergency, settings, and expiry all print directly in
+  [`admin.c:60-485`](../main/admin.c#L60).
+- `cmd_log` prints a heading then calls `logger_print_recent(n)` at
+  [`console.c:101-107`](../main/console.c#L101). The weak fallback at
+  [`console.c:93-98`](../main/console.c#L93) only says storage is unavailable.
+  `logger_dropped_count()` is also a weak `-1` fallback at
+  [`console.c:110-111`](../main/console.c#L110).
+- The RFID producer ignores the return value of its nonblocking queue send;
+  queue-full events are therefore currently silently lost.
+
+## Persistence, hardware, and state
+
+- There is no SD, Preferences/NVS, EEPROM, or RTC implementation in this
+  checkout. `access.c` uses libc time and a temporary simulated clock
+  (`setenv`, `tzset`, `settimeofday`) at [`access.c:107-118`](../main/access.c#L107);
+  this is not persistent RTC state.
+- Runtime user state is the shared `g_users[MAX_USERS]` table and
+  `g_n_users`: UID, name, and `inside` flag ([`shared.h:15-20`](../main/shared.h#L15)).
+  RFID scans seed five test users only when the table is empty
+  ([`access.c:83-104`](../main/access.c#L83)). Admin add/delete mutates the same
+  table ([`admin.c:213-296`](../main/admin.c#L213)).
+- Access settings are duplicated: real enforcement uses `s_open_min`,
+  `s_close_min`, `s_emergency` in [`access.c:21-24`](../main/access.c#L21);
+  admin separately keeps `opening_time`, `closing_time`, `current_time`, and
+  `emergency_active` ([`admin.c:27-39`](../main/admin.c#L27)). Admin schedule
+  and emergency commands do not call the access setters, so displayed/admin
+  settings can disagree with enforcement. The admin PIN, login state,
+  failed attempts/lockout, timeout, schedule, simulated time, and emergency
+  flag are all RAM-only.
+- `access_is_open`, `access_set_hours`, `access_get_hours`,
+  `access_set_emergency`, and `access_schedule_state` are the existing public
+  schedule APIs in [`access.h:6-14`](../main/access.h#L6).
+
+## Member 3 scope: missing or incorrect
+
+1. Add the storage module and `storage_start()` integration; currently
+   `main.c:43` only has the commented `// storage_start();`.
+2. Add an SD-card part and wiring to [`diagram.json`](../diagram.json), while
+   coordinating SPI ownership with the MFRC522 bus (`rfid.c:187-188`).
+3. Implement a bounded log queue and `logger_task`. Producers must use a
+   zero-wait send and increment an atomic/appropriately protected dropped-event
+   counter on failure; never block access, RFID, room, or CLI producers.
+4. Implement the existing console hook signatures exactly:
+   `void logger_print_recent(int n)` and `int logger_dropped_count(void)`
+   ([`console.c:93-111`](../main/console.c#L93)). Add the real definitions to
+   the component so they override the weak fallbacks, and ensure the `log`
+   command reads the SD-backed/ring-buffer data rather than the fallback text.
+5. Add persistent state load/save for users and settings. The requested
+   `state_save_locked` symbol does not exist in this checkout; establish the
+   integration contract as `void state_save_locked(void)` called only while
+   `g_users_mutex` is held (it must not take that mutex again), or document a
+   different explicit lock contract before implementation.
+6. Persist at least the shared users/count and each `inside` value (“who is
+   inside”), plus the effective access settings and admin settings required by
+   the project. Load before `access_start()` seeds defaults, otherwise the
+   seed path can mask restored data.
+
+## Risks to resolve (do not silently inherit)
+
+- `xQueueSend(..., 0)` is intentionally nonblocking, but console reports
+  “queue full” while RFID silently drops. Log queue behavior must be separate
+  from scan queue behavior and must expose drops.
+- `admin.c` has no mutex around its many static globals. `console_task` and
+  `admin_monitor_task` can race on login, timeout, lockout, PIN, schedule, and
+  emergency state. Admin schedule/emergency also race conceptually with the
+  independent access mutex/state.
+- `g_users_mutex` is taken with `portMAX_DELAY`; a slow future persistence
+  operation or SD I/O must not occur while holding it. Existing code generally
+  copies/releases before printing, but `state_save_locked` must be designed
+  carefully to avoid lock-held I/O and deadlock.
+- `handle_scan` snapshots access rules under `s_mutex`, releases it, then
+  updates users under `g_users_mutex`; an admin can change rules between those
+  operations. This is a consistency window, not currently a deadlock.
+- `access_task` blocks indefinitely on `scan_queue`; that is expected consumer
+  behavior, but any producer using a blocking send could stall behind it.
+- `access_task` holds no lock during `vTaskDelay(2000 ms)`, but serial `printf`
+  from multiple tasks can interleave. SD writes and `logger_print_recent`
+  need serialization with the logger/SD owner.
+- `rfid_start` initializes SPI and ignores most driver return codes; the comment
+  says SD may start the bus first, but there is no shared SPI mutex or actual SD
+  initialization. Two independent bus initialization paths are unsafe.
+- `admin_start()` is called after `g_users_mutex` creation but before other
+  tasks; it only checks that mutex and returns an error that `app_main` ignores.
+- `admin_monitor_task` is declared/started even though the task's shared admin
+  state is unprotected. `current_time` is only displayed and does not control
+  `time(NULL)` access decisions.
+
+## Ordered implementation plan
+
+1. Agree and document the ownership contract: `g_users_mutex` protects the
+   user table/count; one effective settings mutex protects schedule/emergency;
+   SD access has one owner/mutex; no mutex is held during printf or SD I/O.
+2. Define the log record shape and bounded queue/drop-counter API, implement
+   nonblocking enqueue helpers, and add `logger_task` with explicit queue-full
+   accounting.
+3. Add SD hardware/wiring and initialize it once, resolving SPI bus sharing
+   with RFID; add mount/write/read error reporting without success-shaped
+   fallbacks.
+4. Implement `storage_start`, `logger_print_recent`, and
+   `logger_dropped_count`; replace the weak console behavior through normal
+   linking and verify `log [n]` plus status dropped count.
+5. Implement state load/save and `state_save_locked` with a snapshot-before-I/O
+   design. Load persisted users/settings before `access_start`; save after
+   successful mutations and on the required settings changes.
+6. Reconcile admin's duplicate schedule/emergency/PIN settings with the
+   effective access state, and explicitly decide which values are persisted;
+   do not leave admin display and access enforcement divergent.
+7. Update `main.c`, component registration, and `diagram.json`; build and test
+   queue saturation, reboot restoration, log retrieval, SD failure, and
+   concurrent scan/admin operations in Wokwi.

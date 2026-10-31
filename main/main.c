@@ -10,6 +10,8 @@
 #include "console.h"
 #include "access.h"
 #include "admin.h"
+#include "storage.h"
+#include "state.h"
 
 #include "shared.h"
 // Queue for simulated RFID scans
@@ -26,6 +28,10 @@ void app_main(void)
     // Create queue for RFID events
     scan_queue = xQueueCreate(8, sizeof(scan_event_t));
 
+    state_load();
+    storage_start();
+    state_log_boot();
+
     // Initialize administrator system
     admin_start();
 
@@ -41,5 +47,4 @@ void app_main(void)
 
     // Other group members' tasks
     // rooms_start();    // Member 1
-    // storage_start();  // Member 3
 }

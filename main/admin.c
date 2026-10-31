@@ -9,6 +9,8 @@
 
 #include "admin.h"
 #include "shared.h"
+#include "access.h"
+#include "state.h"
 
 /* System settings */
 #define DEFAULT_ADMIN_PIN "1234"
@@ -34,6 +36,14 @@ static int current_time = 8 * 60;
 
 /* Emergency mode */
 static bool emergency_active = false;
+
+void admin_state_snapshot(char pin[9], unsigned int *timeout,
+                          int *simulated_time)
+{
+    strlcpy(pin, admin_pin, 9);
+    *timeout = timeout_seconds;
+    *simulated_time = current_time;
+}
 
 static bool convert_time(const char *text, int *minutes)
 {
@@ -178,6 +188,8 @@ static void handle_pin(int argc, char *argv[])
     }
 
     memcpy(admin_pin, argv[2], length + 1);
+    state_update_admin(admin_pin, timeout_seconds, current_time);
+    state_save(); // [kweko] persist administrator PIN
     printf("Administrator PIN changed successfully.\n");
 }
 
@@ -202,6 +214,9 @@ static void handle_schedule(int argc, char *argv[])
 
     opening_time = open;
     closing_time = close;
+    access_set_hours(open, close);
+    state_update_access(open, close, emergency_active);
+    state_save(); // [kweko] persist access schedule
 
     printf("Access schedule updated: %s to %s\n", argv[2], argv[3]);
     printf("Ensure the access-control module uses the same schedule.\n");
@@ -222,6 +237,8 @@ static void handle_time(int argc, char *argv[])
     }
 
     current_time = new_time;
+    state_update_admin(admin_pin, timeout_seconds, current_time);
+    state_save(); // [kweko] persist simulated time
     printf("Simulated time updated to %s.\n", argv[2]);
 }
 
@@ -276,6 +293,8 @@ static void handle_user(int argc, char *argv[])
         strcpy(user->name, name);
         user->inside = false;
         g_n_users++;
+        state_mark_dirty();
+        state_save_locked(); // [kweko] persist registered user
 
         xSemaphoreGive(g_users_mutex);
         printf("User registered: %s (%s)\n", uid, name);
@@ -307,6 +326,8 @@ static void handle_user(int argc, char *argv[])
 
         g_n_users--;
         memset(&g_users[g_n_users], 0, sizeof(g_users[0]));
+        state_mark_dirty();
+        state_save_locked(); // [kweko] persist deleted user
 
         xSemaphoreGive(g_users_mutex);
         printf("User deleted: %s\n", uid);
@@ -361,6 +382,8 @@ static void handle_timeout(int argc, char *argv[])
     }
 
     timeout_seconds = (unsigned int)value;
+    state_update_admin(admin_pin, timeout_seconds, current_time);
+    state_save(); // [kweko] persist light timeout
     printf("Automatic logout set to %u seconds.\n", timeout_seconds);
 }
 
@@ -373,10 +396,16 @@ static void handle_emergency(int argc, char *argv[])
 
     if (strcmp(argv[1], "on") == 0) {
         emergency_active = true;
+        access_set_emergency(true);
+        state_update_access(opening_time, closing_time, emergency_active);
+        state_save(); // [kweko] persist emergency setting
         printf("EMERGENCY MODE ACTIVATED.\n");
         printf("Physical door control must be handled by the access module.\n");
     } else if (strcmp(argv[1], "off") == 0) {
         emergency_active = false;
+        access_set_emergency(false);
+        state_update_access(opening_time, closing_time, emergency_active);
+        state_save(); // [kweko] persist emergency setting
         printf("Emergency mode deactivated.\n");
     } else {
         printf("Use emergency on or emergency off.\n");
@@ -408,9 +437,21 @@ esp_err_t admin_start(void)
     account_locked = false;
     emergency_active = false;
     last_activity = xTaskGetTickCount();
+    char loaded_pin[9];
+    unsigned int loaded_timeout;
+    int loaded_time;
+    bool loaded_emergency;
+    if (state_get_loaded_admin(loaded_pin, &loaded_timeout, &loaded_time,
+                               &loaded_emergency)) {
+        strlcpy(admin_pin, loaded_pin, sizeof(admin_pin));
+        timeout_seconds = loaded_timeout;
+        current_time = loaded_time;
+        emergency_active = loaded_emergency;
+        state_get_loaded_access(&opening_time, &closing_time, &loaded_emergency);
+    }
 
     printf("\n=== CoCIS ADMIN INTERFACE ===\n");
-    printf("Use login 1234 to begin.\n");
+    printf("Use login <PIN> to begin.\n");
 
     return ESP_OK;
 }

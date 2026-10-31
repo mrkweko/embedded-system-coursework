@@ -8,7 +8,13 @@
     { "type": "board-mfrc522",           "id": "rfid2", "top": 80,    "left": -260,  "attrs": {} },
     { "type": "wokwi-microsd-card",      "id": "sd",    "top": 210,   "left": -250,  "attrs": {} },
     { "type": "wokwi-led", "id": "led_entry", "top": 0,  "left": 200, "attrs": { "color": "green" } },
-    { "type": "wokwi-led", "id": "led_exit",  "top": 60, "left": 200, "attrs": { "color": "yellow" } }
+    { "type": "wokwi-led", "id": "led_exit",  "top": 60, "left": 200, "attrs": { "color": "yellow" } },
+    { "type": "wokwi-pir-motion-sensor", "id": "pir_room1", "top": -180, "left": 200, "attrs": {} },
+    { "type": "wokwi-pir-motion-sensor", "id": "pir_room2", "top": -180, "left": 360, "attrs": {} },
+    { "type": "wokwi-led", "id": "led_room1", "top": 150, "left": 300, "attrs": { "color": "white" } },
+    { "type": "wokwi-led", "id": "led_room2", "top": 150, "left": 400, "attrs": { "color": "blue" } },
+    { "type": "wokwi-resistor", "id": "r_room1", "top": 120, "left": 290, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r_room2", "top": 120, "left": 390, "rotate": 90, "attrs": { "value": "220" } }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
@@ -37,7 +43,19 @@
     [ "esp:25", "led_entry:A", "green",  [] ],
     [ "led_entry:C", "esp:GND.1", "black", [] ],
     [ "esp:26", "led_exit:A", "yellow", [] ],
-    [ "led_exit:C", "esp:GND.1", "black", [] ]
+    [ "led_exit:C", "esp:GND.1", "black", [] ],
+    [ "pir_room1:VCC", "esp:3V3", "red", [] ],
+    [ "pir_room1:GND", "esp:GND.1", "black", [] ],
+    [ "pir_room1:OUT", "esp:13", "green", [] ],
+    [ "pir_room2:VCC", "esp:3V3", "red", [] ],
+    [ "pir_room2:GND", "esp:GND.1", "black", [] ],
+    [ "pir_room2:OUT", "esp:14", "green", [] ],
+    [ "esp:22", "r_room1:1", "orange", [] ],
+    [ "r_room1:2", "led_room1:A", "orange", [] ],
+    [ "led_room1:C", "esp:GND.1", "black", [] ],
+    [ "esp:27", "r_room2:1", "blue", [] ],
+    [ "r_room2:2", "led_room2:A", "blue", [] ],
+    [ "led_room2:C", "esp:GND.1", "black", [] ]
   ],
   "dependencies": {}
 }

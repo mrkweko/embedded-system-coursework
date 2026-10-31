@@ -8,6 +8,7 @@ idf_component_register(
         "storage.c"
         "state.c"
     INCLUDE_DIRS "."
+
     REQUIRES
         esp_common
         esp_driver_gpio
@@ -18,6 +19,7 @@ idf_component_register(
         esp_timer
         fatfs
         freertos
+        lighting
         log
         nvs_flash
         sdmmc

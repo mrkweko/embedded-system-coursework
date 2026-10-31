@@ -432,3 +432,62 @@ user mutex.
 - `idf.py`/Arduino CLI/PlatformIO were not available in the environment, so
   an ESP-IDF compile and Wokwi run are unverified. `git diff --check` should be
   run before handoff; the ESP-IDF target must verify the SD/FATFS API versions.
+
+## Build fix
+
+### Cause and source changes
+
+The reported `esp_timer.h` failure was caused by the component dependency
+graph, not by a missing header. `sdmmc_host.h` is provided under the
+`driver/` include namespace, so `storage.c` now includes
+`driver/sdmmc_host.h`. `main/CMakeLists.txt` now lists the split driver
+components required by the source and the shared ESP-IDF components. Changes
+to files owned by other members are marked `// [kweko] build fix`.
+
+| Source | Header(s) used | Providing component |
+|---|---|---|
+| `main.c`, `access.c` | `driver/gpio.h` | `esp_driver_gpio` |
+| `rfid.c`, `storage.c` | `driver/spi_common.h`, `driver/spi_master.h` | `esp_driver_spi` |
+| `rfid.c` | `driver/uart.h` | `esp_driver_uart` |
+| `storage.c` | `driver/sdspi_host.h` | `esp_driver_sdspi` |
+| `storage.c` | `driver/sdmmc_host.h` | `esp_driver_sdmmc` |
+| `storage.c` | `sdmmc_cmd.h` | `sdmmc` |
+| `storage.c` | `esp_vfs_fat.h` | `fatfs` |
+| `rfid.c` | `esp_timer.h` | `esp_timer` |
+| `state.c` | `nvs.h`, `nvs_flash.h` | `nvs_flash` |
+| all FreeRTOS users | `freertos/*` | `freertos` |
+| `rfid.c`, `storage.c` | `esp_err.h` | `esp_common` |
+| `rfid.c` | `esp_log.h` | `log` |
+
+No `driver/i2c.h`, LEDC, or `sdmmc_host` bus API beyond the SD SPI path is
+used by this project, so no corresponding unused requirement was added.
+The source tree contains one component, `main/`; the PlatformIO project uses
+`src_dir = main`.
+
+### Version and clean-build status
+
+- ESP-IDF 6.1.0: **verified** with `pio run -e esp32dev-idf61`; clean build
+  completed without compiler warnings in the captured output.
+- ESP-IDF 5.5.3: **not verified to completion**. The framework and headers
+  were located and the application source compilation began, but this host's
+  PlatformIO 5.5 Python environment has conflicting `kconfiglib` module/file
+  installations. It emits `AttributeError: module 'kconfiglib' has no
+  attribute 'MenuNode'`, then fails certificate-bundle generation because
+  `x509_crt_bundle` is absent. This is a local tooling failure before a
+  complete link; it is not evidence of a source incompatibility. IDF 6.1.0
+  was the only framework fully verified here.
+- IDF 6.1.0 is locally available and tested. A separate IDF 6.1 `idf.py`
+  installation was not used. Wokwi runtime behavior remains unverified.
+
+For a clean local build, remove generated output and run:
+
+```text
+rm -rf .pio/build/esp32dev-idf55 .pio/build/esp32dev-idf61 build
+pio run -e esp32dev-idf55
+pio run -e esp32dev-idf61
+```
+
+For IDF 5.5, repair/recreate the PlatformIO ESP-IDF Python environment from
+the framework's requirements before rerunning; do not copy packages from the
+6.1 environment. For a clean committed-state clone, clone the committed
+branch into a temporary directory, enter it, and run the same two commands.

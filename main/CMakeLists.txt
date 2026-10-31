@@ -8,5 +8,17 @@ idf_component_register(
         "storage.c"
         "state.c"
     INCLUDE_DIRS "."
-    REQUIRES driver fatfs sdmmc nvs_flash
+    REQUIRES
+        esp_common
+        esp_driver_gpio
+        esp_driver_sdmmc
+        esp_driver_sdspi
+        esp_driver_spi
+        esp_driver_uart
+        esp_timer
+        fatfs
+        freertos
+        log
+        nvs_flash
+        sdmmc
 )

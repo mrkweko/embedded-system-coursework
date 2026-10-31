@@ -6,6 +6,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 
+#include "freertos/FreeRTOS.h" // [kweko] build fix: required before semphr.h
 #include "freertos/semphr.h"
 #include "shared.h"
 #include "storage.h"

@@ -14,7 +14,7 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "sdmmc_cmd.h"
-#include "sdmmc_host.h"
+#include "driver/sdmmc_host.h" // [kweko] build fix: exported by esp_driver_sdmmc
 #include "driver/sdspi_host.h"
 
 #define SD_MOUNT_POINT "/sd"

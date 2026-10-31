@@ -39,6 +39,8 @@ static const char *event_type_name(log_event_type_t type)
         return "ACCESS_DENIED";
     case LOG_EVENT_RFID_SCAN:
         return "RFID_SCAN";
+    case LOG_EVENT_SYSTEM:
+        return "SYSTEM";
     default:
         return "UNKNOWN";
     }

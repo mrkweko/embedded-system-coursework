@@ -6,6 +6,7 @@ idf_component_register(
         "access.c"
         "rfid.c"
         "storage.c"
+        "state.c"
     INCLUDE_DIRS "."
-    REQUIRES driver fatfs sdmmc
+    REQUIRES driver fatfs sdmmc nvs_flash
 )

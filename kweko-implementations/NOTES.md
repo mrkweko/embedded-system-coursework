@@ -197,6 +197,86 @@ admin is in `admin.c`; RFID polling is in `rfid.c`.
   sanitized before writing so commas/newlines cannot break the one-event-per-
   CSV-line format.
 
+## Session 3
+
+### NVS persistence
+
+- Added [`state.h`](../main/state.h) and [`state.c`](../main/state.c), using
+  ESP-IDF NVS because the repository has no Arduino `Preferences` or other
+  persistence backend. Namespace: `cocis_state`.
+- Keys:
+  - `state`: one `state_blob_t` NVS blob.
+  - `crc`: FNV-1a-style 32-bit checksum of the complete blob.
+  - The blob also contains `version = 1` and sentinel
+    `0xC0C15A7E`; size, version, sentinel, field ranges, PIN termination, and
+    CRC are all validated before use.
+- Blob layout: access `open_min`, `close_min`, `emergency`; admin
+  `timeout_seconds` (the only existing light/automatic timeout setting),
+  `current_time`, and `admin_pin[9]`; `n_users`; and all `MAX_USERS` fixed-size
+  `user_t` records including UID/tag, name, and `inside`.
+- Defaults on first boot, invalid NVS, or CRC/sentinel failure are 07:00 to
+  20:00, emergency off, timeout 120 seconds, simulated time 08:00, admin PIN
+  `1234`, and an empty user table. `access.c` then seeds the five Wokwi users.
+  There are no per-user PIN fields in the current data model, so user PINs
+  cannot be persisted until that model is added.
+- `state_load(void)` is called once in [`main.c`](../main/main.c) immediately
+  after `g_users_mutex` and `scan_queue` creation and before any task starts.
+  It restores `g_users`/`g_n_users` and caches settings for `admin_start()` and
+  `access_start()`. `state_log_boot(void)` is called after the logger task is
+  started and queues a SYSTEM event stating `restored` or `defaulted` and the
+  restored record count.
+- `state_save_locked(void)` has the exact contract that the caller already
+  holds `g_users_mutex`; it does not take that mutex. It snapshots users and
+  commits the validated blob. `state_save(void)` is the wrapper for changes
+  made outside that lock. `state_mark_dirty(void)` gates commits. Writes are
+  only triggered by mutations, never the scan/polling loops, to limit NVS flash
+  wear. NVS commit is intentionally infrequent; the current implementation
+  performs it synchronously while the state mutex is held, so future work
+  should batch/defer if command latency becomes unacceptable.
+- Reboot semantic: the persisted `inside` flags are restored exactly. A reboot
+  while people are inside does not silently zero occupancy; `who` reports the
+  restored occupants until a valid exit scan changes each flag.
+- `state_factory_reset(void)` erases the namespace, resets RAM users/settings
+  to defaults, and queues a SYSTEM event. It is intentionally not exposed as a
+  command here; Members 4/5 must add a CLI command and ensure it is invoked
+  only by an authenticated administrator.
+
+### Persistence hooks
+
+- [`access.c`](../main/access.c): after a successful entry/exit mutation,
+  `state_mark_dirty(); state_save_locked(); // [kweko] persist occupancy`
+  runs while `g_users_mutex` is held.
+- [`admin.c`](../main/admin.c): schedule set calls `access_set_hours`, updates
+  the state cache, and calls `state_save()`; PIN set, simulated time set,
+  timeout set, and emergency on/off each update the cache and call
+  `state_save()`. User add/delete call `state_mark_dirty()` and
+  `state_save_locked()` while holding `g_users_mutex`. Every addition is
+  marked `// [kweko] persist`.
+- [`access.c`](../main/access.c) updates the state cache whenever its schedule
+  setters run; this keeps the effective access schedule aligned with the
+  admin settings before the next save.
+- `admin_state_snapshot(...)` is the read-only snapshot used by
+  `state_save_locked()` for the private admin PIN/timeout/simulated-time
+  fields. `state_get_loaded_access(...)` and `state_get_loaded_admin(...)`
+  transfer validated boot values to the owning modules.
+
+### Wokwi reboot test
+
+1. Start Wokwi with the added microSD wiring and open the serial monitor.
+2. Log in, run `schedule set 09:00 18:00`, `timeout 300`, and
+   `pin set 5678`; add a user with `user add <UID> Test`.
+3. Use a valid entry scan for a known user, confirm `who` shows that user
+   inside, and wait for the SYSTEM boot/event log if needed.
+4. Reset the ESP32 without issuing an exit scan.
+5. Confirm the boot SYSTEM event says `state restored`, `users` shows the
+   added UID/name as INSIDE, `who` still lists the occupant, the new PIN
+   authenticates, and settings retain the schedule/timeout.
+6. Issue a valid exit scan and verify `who` removes the user; inspect
+   `/sd/events.csv` for CSV SYSTEM/access records.
+7. To test fallback, erase the Wokwi NVS/flash image or call the future
+   authenticated factory-reset command, reboot, and verify `state defaulted`
+   followed by the five seeded users and safe defaults.
+
 ### Integration hooks and other-member edits
 
 - [`main.c`](../main/main.c) includes `storage.h` and calls `storage_start()`

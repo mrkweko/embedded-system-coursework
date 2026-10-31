@@ -14,6 +14,7 @@ typedef enum {
     LOG_EVENT_ACCESS_GRANTED = 0,
     LOG_EVENT_ACCESS_DENIED,
     LOG_EVENT_RFID_SCAN,
+    LOG_EVENT_SYSTEM,
 } log_event_type_t;
 
 typedef struct {

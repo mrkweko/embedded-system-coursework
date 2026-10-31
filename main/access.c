@@ -12,6 +12,7 @@
 #include "console.h"                    // scan_event_t, scan_queue
 #include "shared.h"                     // user_t, g_users, g_n_users, g_users_mutex
 #include "storage.h"                    // [kweko] enqueue access events without blocking
+#include "state.h"
 
 void rfid_start(void);                  // in rfid.c: starts the two RFID readers
 
@@ -71,7 +72,9 @@ void access_set_hours(int open_min, int close_min)
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     s_open_min = open_min;
     s_close_min = close_min;
+    bool emergency = s_emergency;
     xSemaphoreGive(s_mutex);
+    state_update_access(open_min, close_min, emergency);
 }
 
 void access_get_hours(int *open_min, int *close_min)
@@ -86,7 +89,10 @@ void access_set_emergency(bool on)
 {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     s_emergency = on;
+    int open_min = s_open_min;
+    int close_min = s_close_min;
     xSemaphoreGive(s_mutex);
+    state_update_access(open_min, close_min, on);
 }
 
 // ---------- PART 2: test users and clock ----------
@@ -158,6 +164,8 @@ static void handle_scan(const scan_event_t *ev)
             denied = ev->entry ? "ALREADY INSIDE" : "NOT INSIDE";
         } else {
             u->inside = ev->entry;
+            state_mark_dirty();
+            state_save_locked(); // [kweko] persist occupancy before releasing state mutex
         }
     }
     xSemaphoreGive(g_users_mutex);
@@ -190,6 +198,14 @@ static void access_task(void *arg)
 void access_start(void)
 {
     s_mutex = xSemaphoreCreateMutex();
+    int open_min;
+    int close_min;
+    bool emergency;
+    state_get_loaded_access(&open_min, &close_min, &emergency);
+    s_open_min = open_min;
+    s_close_min = close_min;
+    s_emergency = emergency;
+    state_update_access(s_open_min, s_close_min, s_emergency);
     tmp_clock_init();
     seed_test_users();                  // needs g_users_mutex, created in app_main()
 

@@ -6,4 +6,5 @@ idf_component_register(
         "access.c"
         "rfid.c"
     INCLUDE_DIRS "."
+    REQUIRES lighting esp_driver_gpio esp_driver_spi esp_driver_uart esp_timer log
 )

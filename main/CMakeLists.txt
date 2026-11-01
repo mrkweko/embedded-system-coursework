@@ -11,10 +11,14 @@ idf_component_register(
         "energy.c"
 
     INCLUDE_DIRS "."
-
+    
     REQUIRES
         esp_common
-        driver
+        esp_driver_gpio
+        esp_driver_sdmmc
+        esp_driver_sdspi
+        esp_driver_spi
+        esp_driver_uart
         esp_timer
         fatfs
         freertos
@@ -22,4 +26,4 @@ idf_component_register(
         log
         nvs_flash
         sdmmc
-)
+)    

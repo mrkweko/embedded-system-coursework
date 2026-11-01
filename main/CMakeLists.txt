@@ -7,6 +7,8 @@ idf_component_register(
         "rfid.c"
         "storage.c"
         "state.c"
+        "dashboard.c"
+        "energy.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_common

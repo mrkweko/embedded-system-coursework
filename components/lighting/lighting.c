@@ -56,11 +56,15 @@ static void room_control_task(void *pvParameters)
         }
 
         portENTER_CRITICAL(&room_status_mux);
+
         room_status[config->room_number - 1].occupied =
             light_is_on && (now - last_motion_time) < config->off_delay_ticks;
-        room_status[config->room_number - 1].light_on = light_is_on;
-        portEXIT_CRITICAL(&room_status_mux);
 
+        room_status[config->room_number - 1].light_on = light_is_on;
+
+        room_status[config->room_number - 1].motion_detected = (motion != 0);
+
+        portEXIT_CRITICAL(&room_status_mux);
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }

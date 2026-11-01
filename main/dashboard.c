@@ -25,6 +25,7 @@ void dashboard_show(bool emergency_active)
     printf("Emergency Status : %s\n",
            emergency_active ? "ACTIVE" : "NORMAL");
 
+    /* ACCESS SCHEDULE */
     int opening_time;
     int closing_time;
 

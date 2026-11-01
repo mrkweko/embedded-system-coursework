@@ -33,18 +33,18 @@ void app_main(void)
     storage_start();
     state_log_boot();
 
+    // Member 2: before anything that might call access_*()
+    access_start();
+
     // Initialize administrator system
     admin_start();
 
     // Start administrator monitoring task
     xTaskCreate(admin_monitor_task, "admin_monitor",
-                3072, NULL, 2, NULL);
+                4096, NULL, 2, NULL);
 
     // Start serial interface
     console_start();
-
-    // Member 2
-    access_start();
 
     // Member 1
     lighting_init();

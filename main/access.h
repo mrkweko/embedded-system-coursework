@@ -22,15 +22,26 @@ enum {
 
 int access_schedule_state(void);
 
+// Security event structure
+typedef struct {
+    long time_s;
+    char kind[16];
+    char uid[16];
+    bool entry;
+} security_event_t;
+
 // Security monitoring
+int access_get_security_events(security_event_t *out, int max);
 int access_security_alerts(void);
 int access_denied_count(void);
 int access_inconsistencies(void);
 
 // Record a security event
-void access_log_security_event(const char *kind,
-                               const char *uid,
-                               bool entry);
+void access_log_security_event(
+    const char *kind,
+    const char *uid,
+    bool entry
+);
 
 // Building occupancy and capacity
 int access_inside_count(void);

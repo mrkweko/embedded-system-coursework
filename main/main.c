@@ -13,7 +13,7 @@
 #include "lighting.h"
 #include "storage.h"
 #include "state.h"
-
+#include "energy.h"
 #include "shared.h"
 // Queue for simulated RFID scans
 QueueHandle_t scan_queue;
@@ -48,4 +48,5 @@ void app_main(void)
 
     // Member 1
     lighting_init();
+    energy_init();
 }

@@ -7,14 +7,14 @@ idf_component_register(
         "rfid.c"
         "storage.c"
         "state.c"
+        "dashboard.c"
+        "energy.c"
+
     INCLUDE_DIRS "."
+
     REQUIRES
         esp_common
-        esp_driver_gpio
-        esp_driver_sdmmc
-        esp_driver_sdspi
-        esp_driver_spi
-        esp_driver_uart
+        driver
         esp_timer
         fatfs
         freertos

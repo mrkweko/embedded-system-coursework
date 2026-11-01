@@ -1,5 +1,6 @@
 #include "energy.h"
 #include "lighting.h"
+#include "access.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -10,10 +11,13 @@
 /* Accumulated lighting time for both rooms */
 static uint32_t light_seconds[2] = {0, 0};
 
+/* Prevent repeated alerts during continuous motion */
+static bool cross_sensor_active[2] = {false, false};
+
 static portMUX_TYPE energy_mux = portMUX_INITIALIZER_UNLOCKED;
 
 
-/* Monitor lighting usage every second */
+/* Monitor lighting usage and cross-sensor security every second */
 static void energy_monitor_task(void *pvParameters)
 {
     (void)pvParameters;
@@ -24,13 +28,52 @@ static void energy_monitor_task(void *pvParameters)
     {
         for (int i = 1; i <= 2; i++)
         {
-            if (rooms_get_status(i, &room) && room.light_on)
+            if (rooms_get_status(i, &room))
             {
-                portENTER_CRITICAL(&energy_mux);
+                /* Track lighting energy consumption */
+                if (room.light_on)
+                {
+                    portENTER_CRITICAL(&energy_mux);
 
-                light_seconds[i - 1]++;
+                    light_seconds[i - 1]++;
 
-                portEXIT_CRITICAL(&energy_mux);
+                    portEXIT_CRITICAL(&energy_mux);
+                }
+
+                /*
+                 * CROSS-SENSOR SECURITY CHECK
+                 * Motion detected while nobody is inside.
+                 */
+                if (room.motion_detected)
+                {
+                    if (!cross_sensor_active[i - 1])
+                    {
+                        int people_inside = access_inside_count();
+
+                        if (people_inside == 0)
+                        {
+                            access_log_security_event(
+                                "CROSS_SENSOR",
+                                "",
+                                false
+                            );
+
+                            printf(
+                                "[SECURITY] Cross-sensor alert: "
+                                "Motion detected in Room %d "
+                                "but nobody is registered inside.\n",
+                                i
+                            );
+
+                            cross_sensor_active[i - 1] = true;
+                        }
+                    }
+                }
+                else
+                {
+                    /* Allow a new alert when another motion episode begins */
+                    cross_sensor_active[i - 1] = false;
+                }
             }
         }
 

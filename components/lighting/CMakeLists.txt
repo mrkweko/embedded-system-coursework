@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "lighting.c"
     INCLUDE_DIRS "include"
-    REQUIRES driver freertos log
+        REQUIRES esp_driver_gpio freertos log
 )

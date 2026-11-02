@@ -14,7 +14,8 @@
     { "type": "wokwi-led", "id": "led_room1", "top": 150, "left": 300, "attrs": { "color": "white" } },
     { "type": "wokwi-led", "id": "led_room2", "top": 150, "left": 400, "attrs": { "color": "blue" } },
     { "type": "wokwi-resistor", "id": "r_room1", "top": 120, "left": 290, "rotate": 90, "attrs": { "value": "220" } },
-    { "type": "wokwi-resistor", "id": "r_room2", "top": 120, "left": 390, "rotate": 90, "attrs": { "value": "220" } }
+    { "type": "wokwi-resistor", "id": "r_room2", "top": 120, "left": 390, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-lcd1602", "id": "lcd1", "top": -300, "left": 20, "attrs": { "pins": "i2c" } }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
@@ -55,7 +56,13 @@
     [ "led_room1:C", "esp:GND.1", "black", [] ],
     [ "esp:27", "r_room2:1", "blue", [] ],
     [ "r_room2:2", "led_room2:A", "blue", [] ],
-    [ "led_room2:C", "esp:GND.1", "black", [] ]
+    [ "led_room2:C", "esp:GND.1", "black", [] ],
+    [ "led_room2:C", "esp:GND.1", "black", [] ],
+    [ "led_room2:C", "esp:GND.1", "black", [] ],
+    [ "lcd1:SDA", "esp:33", "green", [] ],
+    [ "lcd1:SCL", "esp:4",  "orange", [] ],
+    [ "lcd1:VCC", "esp:5V", "red", [] ],
+    [ "lcd1:GND", "esp:GND.1", "black", [] ]      
   ],
   "dependencies": {}
 }

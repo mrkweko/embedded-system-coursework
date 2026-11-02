@@ -9,12 +9,14 @@ idf_component_register(
         "state.c"
         "dashboard.c"
         "energy.c"
+        "lcd.c"
 
     INCLUDE_DIRS "."
     
     REQUIRES
         esp_common
         esp_driver_gpio
+        esp_driver_i2c
         esp_driver_sdmmc
         esp_driver_sdspi
         esp_driver_spi

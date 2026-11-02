@@ -5,6 +5,7 @@
 //        Two locks, never held together: s_mutex (my data) and g_users_mutex (the shared user table).
 
 #include "access.h"
+#include "lcd.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -146,8 +147,13 @@ void access_get_hours(int *open_min, int *close_min)
 void access_set_emergency(bool on)
 {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
+    bool changed = (s_emergency != on);
     s_emergency = on;
     xSemaphoreGive(s_mutex);
+
+    if (changed) {
+        lcd_show(on ? "EMERGENCY MODE" : "EMERGENCY OFF", on ? "Exit only" : "Normal hours", 3000);
+    }
 }
 
 
@@ -244,6 +250,10 @@ void access_evacuation_begin(void)
     xSemaphoreGive(s_mutex);
 
     printf("\n[EVACUATION] started: %d person(s) recorded inside\n", count);
+
+    char l2[24];
+    snprintf(l2, sizeof(l2), "Inside: %d", count);
+    lcd_show("EVACUATION", l2, 4000);
 }
 
 
@@ -288,6 +298,10 @@ int access_evacuation_report(void)
         printf("  NOT EXITED: %-12s (%s)\n",
                users[miss[i]].name, users[miss[i]].uid);
     }
+
+    char l2[24];
+    snprintf(l2, sizeof(l2), "Not out: %d", missing);
+    lcd_show("EVAC REPORT", l2, 4000);
 
     return missing;
 }
@@ -472,7 +486,15 @@ static void handle_scan(const scan_event_t *ev)
                   "%s DENIED %s (%s): %s",
                   door, name, ev->uid, denied);
 
+        char l1[24];
+        snprintf(l1, sizeof(l1), "%s DENIED", door);
+        lcd_show(l1, denied, 2500);
+
         if (alert) {
+            char l2[24];
+            snprintf(l2, sizeof(l2), "%d DENIED @%s", DENY_STREAK_MAX, door);
+            lcd_show("!! SECURITY !!", l2, 5000);
+
             printf("[SECURITY] %d denied scans in a row at the %s reader (last card %s)\n",
                    DENY_STREAK_MAX, door, ev->uid);
 
@@ -492,6 +514,10 @@ static void handle_scan(const scan_event_t *ev)
               "%s GRANTED %s (%s)%s",
               door, name, ev->uid,
               open ? "" : " [EMERGENCY EXIT]");
+
+    char g1[24];
+    snprintf(g1, sizeof(g1), "%s", open ? (ev->entry ? "ENTRY GRANTED" : "EXIT GRANTED") : "EMERGENCY EXIT");
+    lcd_show(g1, name, 2500);
 
     gpio_num_t pin = ev->entry ? PIN_ENTRY_DOOR : PIN_EXIT_DOOR;
 

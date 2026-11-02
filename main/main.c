@@ -9,6 +9,7 @@
 
 #include "console.h"
 #include "access.h"
+#include "lcd.h"
 #include "admin.h"
 #include "lighting.h"
 #include "storage.h"
@@ -35,6 +36,7 @@ void app_main(void)
 
     // Member 2: before anything that might call access_*()
     access_start();
+    lcd_start();            // Member 2: LCD shows alerts and entry/exit messages
 
     // Initialize administrator system
     admin_start();

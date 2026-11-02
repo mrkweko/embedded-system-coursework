@@ -1,3 +1,4 @@
+#include "lcd.h"
 #include "energy.h"
 #include "lighting.h"
 #include "access.h"
@@ -64,6 +65,9 @@ static void energy_monitor_task(void *pvParameters)
                                 "but nobody is registered inside.\n",
                                 i
                             );
+                            char l2[24];
+                            snprintf(l2, sizeof(l2), "Motion Room %d", i);
+                            lcd_show("!! SECURITY !!", l2, 5000);                            
 
                             cross_sensor_active[i - 1] = true;
                         }

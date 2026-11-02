@@ -526,6 +526,26 @@ static void handle_evacuation(void)
     printf("People still unaccounted for: %d\n", remaining);
 }
 
+/* BUILDING CAPACITY */
+static void handle_capacity(int argc, char *argv[])
+{
+    if (argc != 2) {
+        printf("Usage: capacity <number>   (0 = no limit)\n");
+        return;
+    }
+
+    int n = atoi(argv[1]);
+
+    if (n < 0 || n > 5) {
+        printf("Capacity must be 0 to 5.\n");
+        return;
+    }
+
+    access_set_capacity(n); 
+
+    printf("Building capacity set to %d%s.\n", n, n == 0 ? " (no limit)" : "");
+}
+
 
 /* DISPLAY ADMIN SETTINGS */
 static void handle_settings(void)
@@ -626,7 +646,8 @@ bool admin_handle_command(int argc, char *argv[])
         strcmp(argv[0], "evacuation") == 0 ||
         strcmp(argv[0], "settings") == 0 ||
         strcmp(argv[0], "dashboard") == 0 ||
-        strcmp(argv[0], "reboot") == 0;
+        strcmp(argv[0], "reboot") == 0 ||
+        strcmp(argv[0], "capacity") == 0;
 
     if (!admin_command) {
         return false;
@@ -662,6 +683,9 @@ bool admin_handle_command(int argc, char *argv[])
 
     } else if (strcmp(argv[0], "evacuation") == 0) {
         handle_evacuation();
+
+    } else if (strcmp(argv[0], "capacity") == 0) {
+        handle_capacity(argc, argv);        
 
     } else if (strcmp(argv[0], "settings") == 0) {
         handle_settings();

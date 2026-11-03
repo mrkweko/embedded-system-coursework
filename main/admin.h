@@ -7,6 +7,8 @@
 
 esp_err_t admin_start(void);
 
+void admin_set_emergency(bool on);
+
 bool admin_handle_command(int argc, char *argv[]);
 
 void admin_monitor_task(void *arg);

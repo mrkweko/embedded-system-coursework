@@ -8,6 +8,7 @@
 #include "freertos/queue.h"
 
 #include "console.h"
+#include "alarm.h"
 #include "access.h"
 #include "lcd.h"
 #include "admin.h"
@@ -51,4 +52,5 @@ void app_main(void)
     // Member 1
     lighting_init();
     energy_init();
+    alarm_start();
 }

@@ -38,6 +38,24 @@ static int current_time = 8 * 60;
 /* Emergency mode */
 static bool emergency_active = false;
 
+void admin_set_emergency(bool on)
+{
+    if (on == emergency_active) {
+        return;
+    }
+
+    emergency_active = on;
+    if (on) {
+        access_evacuation_begin();
+        access_set_emergency(true);
+    } else {
+        access_set_emergency(false);
+        access_evacuation_end();
+    }
+
+    state_update_access(opening_time, closing_time, emergency_active);
+    state_save();
+}
 
 void admin_state_snapshot(char pin[9],
                           unsigned int *timeout,

@@ -5,6 +5,7 @@
 //        Two locks, never held together: s_mutex (my data) and g_users_mutex (the shared user table).
 
 #include "access.h"
+#include "alarm.h"
 #include "lcd.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -475,6 +476,9 @@ static void handle_scan(const scan_event_t *ev)
 
     // 3. Record the result.
     bool alert = note_result(ev, denied);
+    if (denied != NULL && strcmp(denied, "EMERGENCY ACTIVE") != 0) {
+        alarm_note_denied();
+    }
 
     // 4. Printing, logging and door delay happen after unlocking.
     if (denied != NULL) {
@@ -521,9 +525,11 @@ static void handle_scan(const scan_event_t *ev)
 
     gpio_num_t pin = ev->entry ? PIN_ENTRY_DOOR : PIN_EXIT_DOOR;
 
+    alarm_door_open(ev->entry);
     gpio_set_level(pin, 1);
     vTaskDelay(pdMS_TO_TICKS(2000));
     gpio_set_level(pin, 0);
+    alarm_door_close(ev->entry);
 }
 
 
@@ -562,4 +568,3 @@ void access_start(void)
 
     rfid_start();
 }
-
